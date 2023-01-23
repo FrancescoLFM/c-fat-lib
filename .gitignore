@@ -2,3 +2,4 @@ fatinfo
 *.img
 .vscode/
 mount_dir/
+*.o

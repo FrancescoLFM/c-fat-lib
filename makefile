@@ -1,25 +1,41 @@
-IMG 	 = filesystem.img
+SH = /bin/bash
 
-FAT_TYPE = 32
-SIZE	 = 100
+CC = gcc
+CFLAGS = -Wall -Wextra -O2
+#CFLAGS += -fanalyzer
+CFLAGS += -I./
+CFLAGS += -g
 
-C_ARGS	 = -O2 -Wall -Werror -g
-TARGET	 = fatinfo
-SRC		 = main.c
+OBJ = main.o
+OBJ += src/file.o src/fat.o
+TARGET = fatinfo
 
-.PHONY = all
-all:
-	gcc $(C_ARGS) $(SRC) -o $(TARGET)
+.PHONY=all
+all: $(TARGET)
 
-.PHONY = create
-create:
-	rm -f $(IMG)
-	mkfs.fat -s 2 -F $(FAT_TYPE) -C $(IMG) $(SIZE)
+%.o: %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
-.PHONY = clean
+$(TARGET): $(OBJ)
+	$(CC) $(CFLAGS) $^ -o $@
+
+.PHONY=clean
 clean:
-	rm -f $(TARGET)
+	rm $(OBJ)
+	rm $(TARGET)
 
-.PHONE = run
+.PHONY=run
 run:
 	./$(TARGET)
+
+.PHONY=debug
+debug:
+	gdb -q ./$(TARGET)
+
+.PHONY=analyze
+analyze:
+	valgrind --tool=memcheck --leak-check=full ./$(TARGET)
+
+.PHONY=count
+count:
+	wc -l *.c src/*.c include/*.h
