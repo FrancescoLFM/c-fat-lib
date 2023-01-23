@@ -3,7 +3,7 @@ IMG 	 = filesystem.img
 FAT_TYPE = 32
 SIZE	 = 100
 
-C_ARGS	 = -O2 -Wall -Werror
+C_ARGS	 = -O2 -Wall -Werror -g
 TARGET	 = fatinfo
 SRC		 = main.c
 
