@@ -155,14 +155,28 @@ void fat_file_entry_fini(fat_file_entry_t *entry)
     free(entry);
 }
 
+fat_dir_t *fat_dir_alloc()
+{
+    fat_dir_t *dir = malloc(sizeof(fat_dir_t));
+    if (dir == NULL)
+        return NULL;
+
+    dir->entry_count = 0;
+    dir->max_entries = 8;
+    dir->entries = malloc(sizeof(fat_file_entry_t) * dir->max_entries);
+    if (dir->entries == NULL) {
+        free(dir);
+        return NULL;
+    }
+
+    return dir;
+}
+
 fat_dir_t *fat_dir_open(fat_file_t *dir)
 {
-    fat_dir_t *file_entries = malloc(sizeof(fat_dir_t));
+    fat_dir_t *file_entries = fat_dir_alloc();
     uint32_t file_n = 0;
     uint32_t offset = 0;
-    file_entries->entry_count = 0;
-    file_entries->max_entries = 8;
-    file_entries->entries = malloc(sizeof(fat_file_entry_t) * file_entries->max_entries);
     file_entries->fs = dir->fs;
 
     while (!dir->eof)
@@ -206,14 +220,19 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir, char *path)
         if(!strcmp(filename, dir->entries[i]->name)) {
             fat_file_t *file = fat_file_init(dir->fs, dir->entries[i]->start_cluster);
             
-            if (dir->entries[i]->attributes & ARCHIVE)
+            if (dir->entries[i]->attributes & ARCHIVE) {
+                if (strtok(NULL, "/"))
+                    return NULL;
                 return file;
+            }
             
             else if (dir->entries[i]->attributes & DIRECTORY) {
                 fat_dir_t *new_dir = fat_dir_open(file);
-                fat_file_open_recursive(new_dir, path);
+                fat_file_t *new_file;
+                new_file = fat_file_open_recursive(new_dir, NULL);
                 fat_dir_close(new_dir);
                 fat_file_close(file);
+                return new_file;
             }
         }
 
@@ -224,15 +243,21 @@ fat_file_t *fat_file_open(fat_fs_t *fs, char *path)
 {
     fat_dir_t *operating_dir;
     fat_file_t *file;
+    fat_file_t *root;
+    char *path_dummy = strdup(path);
+    char *path_saveptr = path_dummy;
 
-    if (*(path++) == '/') {
-        fat_file_t *root = fat_file_init(fs, fs->root_cluster);
+    if (*path_dummy == '/') {
+        root = fat_file_init(fs, fs->root_cluster);
         operating_dir = fat_dir_open(root);
     }
     else
         return NULL;
 
-    file = fat_file_open_recursive(operating_dir, path);
+    file = fat_file_open_recursive(operating_dir, path_dummy);
+    fat_file_close(root);
+    fat_dir_close(operating_dir);
+    free(path_saveptr);
 
     return file;
 }
