@@ -7,7 +7,7 @@ CFLAGS += -I./
 CFLAGS += -g
 
 OBJ = main.o
-OBJ += src/file.o src/fat.o
+OBJ += src/file.o src/fat.o src/array.o
 TARGET = fatinfo
 
 .PHONY=all

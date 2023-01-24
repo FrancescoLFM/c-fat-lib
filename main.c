@@ -1,19 +1,39 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <src/fat.h>
+#include <src/array.h>
+
+#define ARR_SIZE(ARR)   (sizeof(ARR) / sizeof(*ARR))
+
+void *int_copy(void *i)
+{
+    int *copy;
+
+    copy = malloc(sizeof(int));
+    if (!copy)
+        return NULL;
+
+   *copy = *(int *)i;
+    return copy;
+}
 
 int main()
 {
-    FILE *image = fopen(IMAGE_NAME, "r+");
+    struct array *arr;
 
-    fat_fs_t *fs = fat_fs_init(image);
-    fat_file_t *main_file = fat_file_open(fs, "/MAIN.TXT");
-    fat_file_t *prova_file = fat_file_open(fs, "/PROVA/PROVA.TXT");
+    arr = array_create(1, int_copy, free);
 
-    if (main_file != NULL)
-        fat_file_close(main_file);
-    if (prova_file != NULL)
-        fat_file_close(prova_file);
-    fat_fs_fini(fs);
-    fclose(image);
+    for (int i = 0; i < 10; i++)
+        array_push(arr, &i);
+
+    for (int i = 0; i < 10; i++) {
+        int *num;
+
+        num = arr->array[i];
+        printf("%d\n", *num);
+    }
+
+    array_destroy(arr);
+
     return 0;
 }
