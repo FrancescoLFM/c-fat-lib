@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 
 void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer)
 {
@@ -39,15 +40,16 @@ void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_clu
     return;
 }
 
-fat_file_t *fat_file_init(fat_fs_t *fs, uint32_t cluster)
+fat_file_t *fat_file_init(fat_fs_t *fs, fat_file_entry_t *entry)
 {
     fat_file_t *file = malloc(sizeof(fat_file_t));
 
+    file->info = fat_file_entry_copy(entry);
     file->fs = fs;
-    file->cluster = cluster;
-    file->cluster_cache = cluster;
+    file->cluster = entry->start_cluster;
+    file->cluster_cache = entry->start_cluster;
     file->cache = malloc(fs->fat->drive->cluster_size);
-    read_cluster(file, cluster, file->cache);
+    read_cluster(file, file->cluster, file->cache);
     file->eof = 0;
 
     return file;
@@ -55,6 +57,7 @@ fat_file_t *fat_file_init(fat_fs_t *fs, uint32_t cluster)
 
 void fat_file_close(fat_file_t *file)
 {
+    fat_file_entry_fini(file->info);
     free(file->cache);
     free(file);
 }
@@ -127,7 +130,7 @@ char *file_shortname_to_str(uint8_t *shortname)
     return file_name;
 }
 
-fat_file_entry_t *fat_entry_init(fat_file_t *dir, uint32_t dir_offset)
+fat_file_entry_t *fat_file_entry_init(fat_file_t *dir, uint32_t dir_offset)
 {
     fat_file_entry_t *file_entry = malloc(sizeof(fat_file_entry_t));
     uint8_t name[NAME_LEN];
@@ -149,20 +152,39 @@ fat_file_entry_t *fat_entry_init(fat_file_t *dir, uint32_t dir_offset)
     return file_entry;
 }
 
+fat_file_entry_t *fat_file_entry_copy(fat_file_entry_t *entry)
+{
+    fat_file_entry_t *copy;
+
+    copy = malloc(sizeof(*copy));
+    if (copy == NULL)
+        return NULL;
+    
+    memcpy(copy, entry, sizeof(*copy));
+    copy->name = strdup(entry->name);
+    if (copy->name == NULL) {
+        free(copy);
+        return NULL;
+    }
+
+    return copy;
+}
+
 void fat_file_entry_fini(fat_file_entry_t *entry)
 {
     free(entry->name);
     free(entry);
 }
 
-fat_dir_t *fat_dir_alloc()
+fat_dir_t *fat_dir_alloc(fat_file_t *dir_file)
 {
+    const uint32_t ENTRY_PER_CLUSTER = dir_file->fs->fat->drive->cluster_size / ENTRY_SIZE;
     fat_dir_t *dir = malloc(sizeof(fat_dir_t));
     if (dir == NULL)
         return NULL;
 
     dir->entry_count = 0;
-    dir->max_entries = 8;
+    dir->max_entries = fat_dir_entry_get_size(dir_file->fs, dir_file->info) * ENTRY_PER_CLUSTER;
     dir->entries = malloc(sizeof(fat_file_entry_t) * dir->max_entries);
     if (dir->entries == NULL) {
         free(dir);
@@ -174,8 +196,7 @@ fat_dir_t *fat_dir_alloc()
 
 fat_dir_t *fat_dir_open(fat_file_t *dir)
 {
-    fat_dir_t *file_entries = fat_dir_alloc();
-    uint32_t file_n = 0;
+    fat_dir_t *file_entries = fat_dir_alloc(dir);
     uint32_t offset = 0;
     file_entries->fs = dir->fs;
 
@@ -189,16 +210,10 @@ fat_dir_t *fat_dir_open(fat_file_t *dir)
             offset += ENTRY_SIZE;
             continue;
         }
-        if (file_n > file_entries->max_entries) {
-            file_entries->max_entries += 8;
-            file_entries = realloc(file_entries, file_entries->max_entries);
-        }
 
-        file_entries->entries[file_n] = fat_entry_init(dir, offset);
-        file_entries->entry_count++;
+        file_entries->entries[file_entries->entry_count++] = fat_file_entry_init(dir, offset);
 
         offset += ENTRY_SIZE;
-        file_n++;
     }
 
     return file_entries;
@@ -212,52 +227,136 @@ void fat_dir_close(fat_dir_t *dir)
     free(dir);
 }
 
-fat_file_t *fat_file_open_recursive(fat_dir_t *dir, char *path)
+int strcmp_insensitive(const char *s1, const char *s2)
 {
-    char *filename = strtok(path, "/");
+    while (tolower(*s1) == tolower(*s2) && *s1 && *s2) {
+        s1++;
+        s2++;
+    }
+
+    return *s1 - *s2;
+}
+
+fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
+{
+    uint8_t is_dir;
+    char *token = strtok_path(NULL, &is_dir);
 
     for (size_t i=0; i < dir->entry_count; i++)
-        if(!strcmp(filename, dir->entries[i]->name)) {
-            fat_file_t *file = fat_file_init(dir->fs, dir->entries[i]->start_cluster);
-            
-            if (dir->entries[i]->attributes & ARCHIVE) {
-                if (strtok(NULL, "/"))
-                    return NULL;
+        if (!strcmp_insensitive(token, dir->entries[i]->name)) {
+            fat_file_t *file = fat_file_init(dir->fs, dir->entries[i]);
+
+            if (file->info->attributes & ARCHIVE) { /* Exit */
+                free(token);
+                if (is_dir) {
+                    fat_file_close(file);
+                    file = NULL;
+                }
                 return file;
             }
             
-            else if (dir->entries[i]->attributes & DIRECTORY) {
+            else if (file->info->attributes & DIRECTORY) { /* Recur */
                 fat_dir_t *new_dir = fat_dir_open(file);
                 fat_file_t *new_file;
-                new_file = fat_file_open_recursive(new_dir, NULL);
+
+                new_file = fat_file_open_recursive(new_dir);
+
                 fat_dir_close(new_dir);
                 fat_file_close(file);
+                free(token);
                 return new_file;
             }
         }
-
+    free(token);
     return NULL;
+}
+
+
+size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_file_entry_t *dir_entry)
+{
+    size_t size = 0;
+    uint32_t ring = 0;
+
+    while (ring < EOC)
+        ring = cluster_chain_read(fs->fat, dir_entry->start_cluster, size++);
+    
+    return size;
+}
+
+fat_file_entry_t *root_entry_init(fat_fs_t *fs)
+{
+    fat_file_entry_t *root_entry;
+
+    root_entry = malloc(sizeof(fat_file_entry_t));
+
+    root_entry->start_cluster = fs->root_cluster;
+    root_entry->name = malloc(sizeof(uint8_t));
+    *root_entry->name = '\0';
+    root_entry->attributes = DIRECTORY;
+    root_entry->creation_time = 0;
+    root_entry->creation_date = 0;
+    root_entry->last_access_date = 0;
+    root_entry->modification_date = 0;
+    root_entry->size = fat_dir_entry_get_size(fs, root_entry);
+ 
+    return root_entry;
+}
+
+char *strtok_path(char *path, uint8_t *is_dir)
+{
+    static char *path_saved = NULL;
+    static int path_pos = 0;
+
+    char *token; 
+    size_t token_len = 0;
+    int last_pos;
+
+    if (is_dir) *is_dir = 0;
+
+    if (path != NULL)
+        path_saved = path;
+
+    if (path_saved[path_pos] == '\0')
+        return NULL;
+
+    last_pos = path_pos;
+
+    while (path_saved[path_pos] != '\0') {
+        if (path_saved[path_pos++] == '/') {
+            if (is_dir) *is_dir = 1;
+            break;
+        }
+        token_len++;
+    }
+    
+    token = strndup(&path_saved[last_pos], token_len);
+
+    return token;
 }
 
 fat_file_t *fat_file_open(fat_fs_t *fs, char *path)
 {
-    fat_dir_t *operating_dir;
-    fat_file_t *file;
-    fat_file_t *root;
-    char *path_dummy = strdup(path);
-    char *path_saveptr = path_dummy;
+    fat_dir_t *operating_dir = NULL;
+    fat_file_t *operating_file = NULL;
+    fat_file_t *file = NULL;
+    char *token;
 
-    if (*path_dummy == '/') {
-        root = fat_file_init(fs, fs->root_cluster);
-        operating_dir = fat_dir_open(root);
+    token = strtok_path(path, NULL);
+    if (*path == '/') {
+        fat_file_entry_t *root_entry = root_entry_init(fs);
+        operating_file = fat_file_init(fs, root_entry);
+        operating_dir = fat_dir_open(operating_file);
+        fat_file_entry_fini(root_entry);
     }
     else
-        return NULL;
+        goto exit;
 
-    file = fat_file_open_recursive(operating_dir, path_dummy);
-    fat_file_close(root);
+    file = fat_file_open_recursive(operating_dir);
+
     fat_dir_close(operating_dir);
-    free(path_saveptr);
+    fat_file_close(operating_file);
 
+exit:
+    free(token);
     return file;
 }

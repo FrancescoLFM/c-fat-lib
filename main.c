@@ -17,23 +17,29 @@ void *int_copy(void *i)
     return copy;
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    struct array *arr;
-
-    arr = array_create(1, int_copy, free);
-
-    for (int i = 0; i < 10; i++)
-        array_push(arr, &i);
-
-    for (int i = 0; i < 10; i++) {
-        int *num;
-
-        num = arr->array[i];
-        printf("%d\n", *num);
+    if (argc != 2) {
+        puts("Usage invalid");
+        return 1;
     }
 
-    array_destroy(arr);
+    FILE *image = fopen(IMAGE_NAME, "r");
+    if (image == NULL)
+        return -1;
 
+    fat_fs_t *fs = fat_fs_init(image);
+
+    fat_file_t *main_file = fat_file_open(fs, argv[1]);
+
+    if (main_file != NULL) {
+        printf("File opened: %s\n", main_file->info->name);
+        fat_file_close(main_file);
+    }
+    else
+        puts("Invalid path...");
+
+    fat_fs_fini(fs);
+    fclose(image);
     return 0;
 }

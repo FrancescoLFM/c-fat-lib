@@ -104,15 +104,6 @@ typedef struct
 
 typedef struct
 {
-    fat_fs_t *fs;
-    uint32_t cluster;
-    uint32_t cluster_cache;
-    uint8_t *cache;
-    uint8_t eof;
-} fat_file_t;
-
-typedef struct
-{
     char *name;
     uint8_t attributes;
     uint16_t creation_time;
@@ -123,6 +114,16 @@ typedef struct
     uint16_t modification_date;
     uint32_t size; // In bytes
 } fat_file_entry_t;
+
+typedef struct
+{
+    fat_file_entry_t *info;
+    fat_fs_t *fs;
+    uint32_t cluster;
+    uint32_t cluster_cache;
+    uint8_t *cache;
+    uint8_t eof;
+} fat_file_t;
 
 typedef struct
 {
@@ -152,16 +153,22 @@ void fat_fini(fat_t *fat);
 void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer);
 uint32_t cluster_chain_read(fat_t *fat, uint32_t start, uint32_t pos);
 
-fat_file_t *fat_file_init(fat_fs_t *fs, uint32_t cluster);
+fat_file_t *fat_file_init(fat_fs_t *fs, fat_file_entry_t *entry);
 fat_file_t *fat_file_open(fat_fs_t *fs, char *path);
-fat_file_t *fat_file_open_recursive(fat_dir_t *dir, char *path);
+fat_file_t *fat_file_open_recursive(fat_dir_t *dir);
 void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_cluster);
 void fat_file_close(fat_file_t *file);
 
-fat_file_entry_t *fat_entry_init(fat_file_t *dir, uint32_t dir_offset);
+fat_file_entry_t *fat_file_entry_init(fat_file_t *dir, uint32_t dir_offset);
+fat_file_entry_t *root_entry_init(fat_fs_t *fs);
+fat_file_entry_t *fat_file_entry_copy(fat_file_entry_t *entry);
 void fat_file_entry_fini(fat_file_entry_t *entry);
+size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_file_entry_t *dir_entry);
 
+fat_dir_t *fat_dir_alloc(fat_file_t *dir_file);
 fat_dir_t *fat_dir_open(fat_file_t *dir);
 void fat_dir_close(fat_dir_t *dir);
+
+char *strtok_path(char *path, uint8_t *is_dir);
 
 #endif

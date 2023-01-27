@@ -1,7 +1,12 @@
 SH = /bin/bash
 
+IMG 	 = filesystem.img
+
+FAT_TYPE = 32
+SIZE	 = 100
+
 CC = gcc
-CFLAGS = -Wall -Wextra -O2
+CFLAGS = -Wall -Wextra 
 #CFLAGS += -fanalyzer
 CFLAGS += -I./
 CFLAGS += -g
@@ -18,6 +23,11 @@ all: $(TARGET)
 
 $(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) $^ -o $@
+
+.PHONY = create
+create:
+	rm -f $(IMG)
+	mkfs.fat -s 2 -F $(FAT_TYPE) -C $(IMG) $(SIZE)
 
 .PHONY=clean
 clean:
@@ -38,4 +48,4 @@ analyze:
 
 .PHONY=count
 count:
-	wc -l *.c src/*.c include/*.h
+	wc -l src/*.c *.c
