@@ -4,6 +4,29 @@
 #include <src/array.h>
 
 #define ARR_SIZE(ARR)   (sizeof(ARR) / sizeof(*ARR))
+#define UNIX_YEAR       1980
+
+void print_entry_time(fat_entry_time_t *time)
+{
+    printf("%d:%d:%d\n", time->hour, time->minutes, time->seconds);
+    return;
+}
+
+void print_entry_date(fat_entry_date_t *date)
+{
+    printf("%d/%d/%d\n", date->day, date->month, UNIX_YEAR + date->year); 
+    return;
+}
+
+void print_file(fat_file_t *file)
+{
+    printf("File name: %s\n", file->info->name);
+    printf("File size: %d\n", file->info->size);
+    printf("File creation time: ");
+    print_entry_time(&file->info->creation_time);
+    printf("File creation date: ");
+    print_entry_date(&file->info->creation_date);
+}
 
 void *int_copy(void *i)
 {
@@ -33,7 +56,7 @@ int main(int argc, char **argv)
     fat_file_t *main_file = fat_file_open(fs, argv[1]);
 
     if (main_file != NULL) {
-        printf("File opened: %s\n", main_file->info->name);
+        print_file(main_file);
         fat_file_close(main_file);
     }
     else
