@@ -148,7 +148,7 @@ typedef struct
 } fat_dir_t;
 
 void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer);
-void cache_refresh(void *cache, size_t cache_size);
+int cache_refresh(void *cache, size_t cache_size);
 
 fat_drive_t *fat_drive_init(FILE *image, fat_bpb_t *params);
 void fat_drive_fini(fat_drive_t *drive);
@@ -161,7 +161,7 @@ uint8_t fsinfo_read(fat_fsinfo_t *fsinfo, fat_bpb_t *bpb, FILE *image);
 
 fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive);
 uint32_t fat_readl(fat_t *fat, uint32_t offset);
-void fat_cache_change(fat_t *fat, uint32_t new_lba);
+int fat_cache_change(fat_t *fat, uint32_t new_lba);
 void fat_fini(fat_t *fat);
 
 void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer);

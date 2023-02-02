@@ -11,30 +11,39 @@ void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer)
     return;
 }
 
-void cache_refresh(void *cache, size_t cache_size)
+int cache_refresh(void *cache, size_t cache_size)
 {
-    if (cache != NULL)
-        free(cache);
+    void *old_cache;
+    int err = 0;
+
+    old_cache = cache;
 
     cache = malloc(cache_size);
     if (cache == NULL)
     {
         fputs("fs_error: insufficient space to read the disk", stderr);
-        return;
+        err = 1;
     }
 
-    return;
+    if (old_cache != NULL)
+        free(cache);
+
+    return err;
 }
 
 uint32_t fat_readl(fat_t *fat, uint32_t offset)
 {
+    int err;
     uint32_t lba = fat->start;
 
     lba += (offset * sizeof(uint32_t)) / fat->drive->sector_size;
     offset %= (fat->drive->sector_size / sizeof(uint32_t));
 
-    if (fat->cache_lba != lba)
-        fat_cache_change(fat, lba);
+    if (fat->cache_lba != lba) {
+        err = fat_cache_change(fat, lba);
+        if (err)
+            return 0;
+    }
 
     return fat->cache[offset];
 }
@@ -117,12 +126,17 @@ uint8_t fsinfo_read(fat_fsinfo_t *fsinfo, fat_bpb_t *bpb, FILE *image)
     return err;
 }
 
-void fat_cache_change(fat_t *fat, uint32_t new_lba)
+int fat_cache_change(fat_t *fat, uint32_t new_lba)
 {
-    cache_refresh(fat->cache, fat->drive->sector_size);
+    int err;
+
+    err = cache_refresh(fat->cache, fat->drive->sector_size);
+    if (err)
+        return err;
     read_sectors(fat->drive->image, 1, new_lba, fat->cache);
 
     fat->cache_lba = new_lba;
+    return 0;
 }
 
 fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive)
@@ -135,7 +149,7 @@ fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive)
     fat_table->size = fat_info->fat_size;
     fat_table->count = fat_info->boot_record.fat_count;
 
-    fat_table->cache = malloc(sizeof(uint8_t) * fat_table->drive->sector_size);
+    fat_table->cache = malloc(fat_table->drive->sector_size);
     read_sectors(drive->image, 1, fat_table->start, fat_table->cache);
     fat_table->cache_lba = fat_table->start;
 

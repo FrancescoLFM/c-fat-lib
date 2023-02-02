@@ -21,7 +21,7 @@ void print_entry_date(fat_entry_date_t *date)
 void print_file(fat_file_t *file)
 {
     printf("File name: %s\n", file->info->name);
-    printf("File size: %d\n", file->info->size);
+    printf("File size: %d bytes\n", file->info->size);
     printf("File creation time: ");
     print_entry_time(&file->info->creation_time);
     printf("File creation date: ");

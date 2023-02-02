@@ -111,7 +111,7 @@ fat_dir_t *fat_dir_alloc(fat_file_t *dir_file)
 
     dir->entry_count = 0;
     dir->max_entries = fat_dir_entry_get_size(dir_file->fs, dir_file->info) * ENTRY_PER_CLUSTER;
-    dir->entries = malloc(sizeof(fat_entry_t) * dir->max_entries);
+    dir->entries = malloc(sizeof(fat_entry_t *) * dir->max_entries);
     if (dir->entries == NULL) {
         free(dir);
         return NULL;
@@ -167,6 +167,8 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
 {
     uint8_t is_dir;
     char *token = strtok_path(NULL, &is_dir);
+    if (token == NULL)
+        return NULL;
 
     for (size_t i=0; i < dir->entry_count; i++)
         if (!strcmp_insensitive(token, dir->entries[i]->name)) {
@@ -192,7 +194,14 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
                 free(token);
                 return new_file;
             }
+
+            else {
+                fat_file_close(file);
+                goto forced_exit;
+            }
         }
+
+forced_exit:
     free(token);
     return NULL;
 }
@@ -204,7 +213,7 @@ fat_entry_t *root_entry_init(fat_fs_t *fs)
     root_entry = malloc(sizeof(fat_entry_t));
 
     root_entry->start_cluster = fs->root_cluster;
-    root_entry->name = malloc(sizeof(uint8_t));
+    root_entry->name = malloc(sizeof(char));
     *root_entry->name = '\0';
     root_entry->attributes = DIRECTORY;
     root_entry->creation_time = EMPTY_TIME;
@@ -231,7 +240,7 @@ char *strtok_path(char *path, uint8_t *is_dir)
     if (path != NULL)
         path_saved = path;
 
-    if (path_saved[path_pos] == '\0')
+    if (path_saved == NULL || path_saved[path_pos] == '\0')
         return NULL;
 
     last_pos = path_pos;
