@@ -63,6 +63,8 @@ typedef struct
     char identifier[8];
 } __attribute__((packed)) fat_bpb_t;
 
+void fat_bpb_read(fat_bpb_t *bpb, FILE *image);
+
 typedef struct
 {
     uint32_t lead_signature;
@@ -74,6 +76,8 @@ typedef struct
     uint32_t trail_signature;
 } __attribute__((packed)) fat_fsinfo_t;
 
+uint8_t fsinfo_read(fat_fsinfo_t *fsinfo, fat_bpb_t *bpb, FILE *image);
+
 typedef struct
 {
     FILE *image;
@@ -83,6 +87,11 @@ typedef struct
     uint32_t sector_count;
     uint32_t partition_lba;
 } fat_drive_t;
+
+fat_drive_t *fat_drive_init(FILE *image, fat_bpb_t *params);
+void fat_drive_fini(fat_drive_t *drive);
+void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer);
+int cache_refresh(void *cache, size_t cache_size);
 
 typedef struct
 {
@@ -94,6 +103,11 @@ typedef struct
     uint32_t *cache;
 } fat_t;
 
+fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive);
+uint32_t fat_readl(fat_t *fat, uint32_t offset);
+int fat_cache_change(fat_t *fat, uint32_t new_lba);
+void fat_fini(fat_t *fat);
+
 typedef struct
 {
     fat_t *fat;
@@ -101,6 +115,9 @@ typedef struct
     uint32_t free_cluster_count;
     uint32_t free_cluster;
 } fat_fs_t;
+
+fat_fs_t *fat_fs_init(FILE *image);
+void fat_fs_fini(fat_fs_t *fs);
 
 typedef struct 
 {
@@ -129,6 +146,11 @@ typedef struct
     uint32_t size; // In bytes
 } fat_entry_t;
 
+fat_entry_t *root_entry_init(fat_fs_t *fs);
+fat_entry_t *fat_entry_copy(fat_entry_t *entry);
+void fat_entry_fini(fat_entry_t *entry);
+size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_entry_t *dir_entry);
+
 typedef struct
 {
     fat_entry_t *info;
@@ -139,6 +161,18 @@ typedef struct
     uint8_t eof;
 } fat_file_t;
 
+void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer);
+uint32_t cluster_chain_read(fat_t *fat, uint32_t start, uint32_t pos);
+
+fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry);
+fat_file_t *fat_file_open(fat_fs_t *fs, char *path);
+void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_cluster);
+void fat_file_buffered_readb(fat_file_t *file, uint32_t offset, uint8_t *buffer, size_t buffer_size);
+uint16_t fat_file_readl(fat_file_t *file, uint32_t offset);
+uint16_t fat_file_readw(fat_file_t *file, uint32_t offset);
+uint8_t fat_file_readb(fat_file_t *file, uint32_t offset);
+void fat_file_close(fat_file_t *file);
+
 typedef struct
 {
     fat_fs_t *fs;
@@ -147,42 +181,8 @@ typedef struct
     size_t entry_count;
 } fat_dir_t;
 
-void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer);
-int cache_refresh(void *cache, size_t cache_size);
-
-fat_drive_t *fat_drive_init(FILE *image, fat_bpb_t *params);
-void fat_drive_fini(fat_drive_t *drive);
-
-fat_fs_t *fat_fs_init(FILE *image);
-void fat_fs_fini(fat_fs_t *fs);
-
-void fat_bpb_read(fat_bpb_t *bpb, FILE *image);
-uint8_t fsinfo_read(fat_fsinfo_t *fsinfo, fat_bpb_t *bpb, FILE *image);
-
-fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive);
-uint32_t fat_readl(fat_t *fat, uint32_t offset);
-int fat_cache_change(fat_t *fat, uint32_t new_lba);
-void fat_fini(fat_t *fat);
-
-void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer);
-uint32_t cluster_chain_read(fat_t *fat, uint32_t start, uint32_t pos);
-
-fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry);
-fat_file_t *fat_file_open(fat_fs_t *fs, char *path);
-fat_file_t *fat_file_open_recursive(fat_dir_t *dir);
-void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_cluster);
-void fat_file_buffered_readb(fat_file_t *file, uint32_t offset, uint8_t *buffer, size_t buffer_size);
-uint16_t fat_file_readl(fat_file_t *file, uint32_t offset);
-uint16_t fat_file_readw(fat_file_t *file, uint32_t offset);
-uint8_t fat_file_readb(fat_file_t *file, uint32_t offset);
-void fat_file_close(fat_file_t *file);
-
 fat_entry_t *fat_entry_init(fat_file_t *dir, uint32_t dir_offset);
-fat_entry_t *root_entry_init(fat_fs_t *fs);
-fat_entry_t *fat_entry_copy(fat_entry_t *entry);
-void fat_entry_fini(fat_entry_t *entry);
-size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_entry_t *dir_entry);
-
+fat_file_t *fat_file_open_recursive(fat_dir_t *dir);
 fat_dir_t *fat_dir_alloc(fat_file_t *dir_file);
 fat_dir_t *fat_dir_open(fat_file_t *dir);
 void fat_dir_close(fat_dir_t *dir);
