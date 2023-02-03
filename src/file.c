@@ -9,9 +9,8 @@ void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer)
     fat_t *fat = file->fs->fat;
     uint32_t data_start = fat->start + (fat->size * fat->count);
 
-    if (cluster > file->fs->root_cluster)
+    if (cluster >= file->fs->root_cluster)
         cluster -= file->fs->root_cluster;
-        
     read_sectors(fat->drive->image, fat->drive->sector_per_cluster,
                  data_start + (cluster * fat->drive->sector_per_cluster), buffer);
 
