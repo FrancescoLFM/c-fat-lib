@@ -10,7 +10,7 @@ void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer)
     uint32_t data_start = fat->start + (fat->size * fat->count);
 
     if (cluster < file->fs->root_cluster)
-        return;
+        cluster += file->fs->root_cluster;
     cluster -= file->fs->root_cluster;
     read_sectors(fat->drive->image, fat->drive->sector_per_cluster,
                  data_start + (cluster * fat->drive->sector_per_cluster), buffer);
@@ -125,19 +125,13 @@ fat_dir_t *fat_dir_open(fat_file_t *dir)
     fat_dir_t *file_entries = fat_dir_alloc(dir);
     uint32_t offset = 0;
     file_entries->fs = dir->fs;
+    uint32_t attr;
 
     while (!dir->eof)
     {
-        uint32_t attr;
-        if ((attr = fat_file_readb(dir, ATTR_OFFSET + offset)) == LFN) { // File is a LFN, skip
-            offset += ENTRY_SIZE;
-        }
-        else if (!attr) { // file entry doesn't exist, skip
-            offset += ENTRY_SIZE;
-            continue;
-        }
-
-        file_entries->entries[file_entries->entry_count++] = fat_entry_init(dir, offset);
+        attr = fat_file_readb(dir, ATTR_OFFSET + offset);
+        if (attr && attr != LFN)
+            file_entries->entries[file_entries->entry_count++] = fat_entry_init(dir, offset);
 
         offset += ENTRY_SIZE;
     }
@@ -166,6 +160,7 @@ int strcmp_insensitive(const char *s1, const char *s2)
 fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
 {
     uint8_t is_dir;
+    fat_file_t *ret = NULL;
     char *token = strtok_path(NULL, &is_dir);
     if (token == NULL)
         return NULL;
@@ -175,12 +170,13 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
             fat_file_t *file = fat_file_init(dir->fs, dir->entries[i]);
 
             if (file->info->attributes & ARCHIVE) { /* Exit */
-                free(token);
                 if (is_dir) {
                     fat_file_close(file);
-                    file = NULL;
+                    ret = NULL;
                 }
-                return file;
+                else
+                    ret = file;
+                goto exit;
             }
             
             else if (file->info->attributes & DIRECTORY) { /* Recur */
@@ -191,19 +187,19 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
 
                 fat_dir_close(new_dir);
                 fat_file_close(file);
-                free(token);
-                return new_file;
+                ret = new_file;
+                goto exit;
             }
-
             else {
                 fat_file_close(file);
-                goto forced_exit;
+                ret = file;
+                goto exit;
             }
         }
 
-forced_exit:
+exit:
     free(token);
-    return NULL;
+    return ret;
 }
 
 fat_entry_t *root_entry_init(fat_fs_t *fs)
@@ -258,27 +254,43 @@ char *strtok_path(char *path, uint8_t *is_dir)
     return token;
 }
 
+fat_dir_t *fat_dir_root_open(fat_fs_t *fs)
+{
+    fat_file_t *root_file;
+    fat_dir_t *root_dir;
+    fat_entry_t *root_entry;
+
+    root_entry = root_entry_init(fs);
+    root_file = fat_file_init(fs, root_entry);
+    root_dir = fat_dir_open(root_file);
+
+    fat_entry_fini(root_entry);
+    fat_file_close(root_file);
+    return root_dir;
+}
+
 fat_file_t *fat_file_open(fat_fs_t *fs, char *path)
 {
     fat_dir_t *operating_dir = NULL;
-    fat_file_t *operating_file = NULL;
     fat_file_t *file = NULL;
     char *token;
 
     token = strtok_path(path, NULL);
-    if (*path == '/') {
-        fat_entry_t *root_entry = root_entry_init(fs);
-        operating_file = fat_file_init(fs, root_entry);
-        operating_dir = fat_dir_open(operating_file);
-        fat_entry_fini(root_entry);
-    }
-    else
+    
+    switch (*path)
+    {
+    case '/':
+        operating_dir = fat_dir_root_open(fs);
+        break;
+
+    default:
+        /* Implement relative path */
         goto exit;
+    }
 
     file = fat_file_open_recursive(operating_dir);
 
     fat_dir_close(operating_dir);
-    fat_file_close(operating_file);
 
 exit:
     free(token);
