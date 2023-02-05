@@ -138,7 +138,7 @@ size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_entry_t *dir_entry)
     uint32_t ring = 0;
 
     while (ring < EOC)
-        ring = cluster_chain_read(fs->fat, dir_entry->start_cluster, size++);
+        ring = cluster_chain_read(fs, dir_entry->start_cluster, size++);
     
     return size;
 }

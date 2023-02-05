@@ -4,39 +4,46 @@
 #include <stdio.h>
 #include <ctype.h>
 
-void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer)
+void access_cluster(fat_fs_t *fs, uint32_t cluster, void *buffer, uint8_t direction)
 {
-    fat_t *fat = file->fs->fat;
+    fat_t *fat = fs->fat;
     uint32_t data_start = fat->start + (fat->size * fat->count);
+    uint32_t lba;
 
-    if (cluster >= file->fs->root_cluster)
-        cluster -= file->fs->root_cluster;
-    read_sectors(fat->drive->image, fat->drive->sector_per_cluster,
-                 data_start + (cluster * fat->drive->sector_per_cluster), buffer);
+    if (cluster >= fs->root_cluster)
+        cluster -= fs->root_cluster;
+
+    lba = data_start + (cluster * fat->drive->sector_per_cluster);
+
+    if (direction == FILE_READ)
+        read_sectors(fat->drive->image, fat->drive->sector_per_cluster,
+                     lba, buffer);
+    else if (direction == FILE_WRITE)
+        write_sectors(fat->drive->image, fat->drive->sector_per_cluster,
+                      lba, buffer);
 
     return;
 }
 
-uint32_t cluster_chain_read(fat_t *fat, uint32_t start, uint32_t pos)
+void read_cluster(fat_fs_t *fs, uint32_t cluster, void *buffer)
+{
+    access_cluster(fs, cluster, buffer, FILE_READ);
+}
+
+void write_cluster(fat_fs_t *fs, uint32_t cluster, void *buffer)
+{
+    access_cluster(fs, cluster, buffer, FILE_WRITE);
+}
+
+uint32_t cluster_chain_read(fat_fs_t *fs, uint32_t start, uint32_t pos)
 {
     uint32_t chain_ring = start;
 
-    do
-    {
-        chain_ring = fat_readl(fat, chain_ring);
+    do {
+        chain_ring = fat_readl(fs, chain_ring);
     } while (chain_ring < EOC && pos--);
 
     return chain_ring;
-}
-
-void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_cluster)
-{
-    cache_refresh(file->cache, cache_size);
-    read_cluster(file, new_cluster, file->cache);
-
-    file->cluster_cache = new_cluster;
-
-    return;
 }
 
 fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry)
@@ -46,9 +53,7 @@ fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry)
     file->info = fat_entry_copy(entry);
     file->fs = fs;
     file->cluster = entry->start_cluster;
-    file->cluster_cache = entry->start_cluster;
-    file->cache = malloc(fs->fat->drive->cluster_size);
-    read_cluster(file, file->cluster, file->cache);
+    file->cache = fat_file_cache_init(file);
     file->eof = 0;
 
     return file;
@@ -57,30 +62,50 @@ fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry)
 void fat_file_close(fat_file_t *file)
 {
     fat_entry_fini(file->info);
-    free(file->cache);
+    fat_cache_fini(file->cache, file->fs);
     free(file);
 }
 
-uint8_t fat_file_readb(fat_file_t *file, uint32_t offset)
+uint8_t fat_file_access(fat_file_t *file, uint32_t offset, uint8_t val, uint8_t direction)
 {
     uint32_t cluster;
     fat_t *fat = file->fs->fat;
+    uint8_t *cache_cast;
 
     cluster = offset / fat->drive->cluster_size;
     offset %= fat->drive->cluster_size;
-    if (cluster + file->cluster != file->cluster_cache)
+    if (cluster + file->cluster != file->cache->address)
     {
         if (cluster != 0) {
-            cluster = cluster_chain_read(fat, file->cluster, cluster - 1);
+            cluster = cluster_chain_read(file->fs, file->cluster, cluster - 1);
             if (cluster >= EOC) {
                 file->eof = 1;
                 return 0;
             }
+            fat_cache_refresh(file->cache, file->fs, cluster);
         }
-        fat_file_cache_change(file, fat->drive->cluster_size, cluster);
+        else
+            fat_cache_refresh(file->cache, file->fs, file->cluster);
     }
 
-    return file->cache[offset];
+    cache_cast = (uint8_t *) file->cache->buffer;
+
+    if (direction == FILE_READ)
+        return cache_cast[offset];
+    else if (direction == FILE_WRITE)
+        cache_cast[offset] = val;
+
+    return 0;
+}
+
+
+uint8_t fat_file_readb(fat_file_t *file, uint32_t offset)
+{
+    uint8_t ret;
+
+    ret = fat_file_access(file, offset, 0, FILE_READ);
+
+    return ret;
 }
 
 uint16_t fat_file_readw(fat_file_t *file, uint32_t offset)
@@ -97,6 +122,13 @@ void fat_file_buffered_readb(fat_file_t *file, uint32_t offset, uint8_t *buffer,
 {
     for (size_t i=0; i < buffer_size; i++)
         buffer[i] = fat_file_readb(file, offset + i);
+
+    return;
+}
+
+void fat_file_writeb(fat_file_t *file, uint32_t offset, uint8_t val)
+{
+    fat_file_access(file, offset, val, FILE_WRITE);
 
     return;
 }
@@ -172,8 +204,7 @@ fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
                 if (is_dir) {
                     fat_file_close(file);
                     ret = NULL;
-                }
-                else
+                } else
                     ret = file;
                 goto exit;
             }

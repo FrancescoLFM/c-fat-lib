@@ -11,41 +11,28 @@ void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer)
     return;
 }
 
-int cache_refresh(void *cache, size_t cache_size)
+void write_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer)
 {
-    void *old_cache;
-    int err = 0;
+    fseek(image, lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(buffer, sizeof(uint8_t), n * SECTOR_SIZE, image);
 
-    old_cache = cache;
-
-    cache = malloc(cache_size);
-    if (cache == NULL)
-    {
-        fputs("fs_error: insufficient space to read the disk", stderr);
-        err = 1;
-    }
-
-    if (old_cache != NULL)
-        free(cache);
-
-    return err;
+    return;
 }
 
-uint32_t fat_readl(fat_t *fat, uint32_t offset)
+uint32_t fat_readl(fat_fs_t *fs, uint32_t offset)
 {
-    int err;
-    uint32_t lba = fat->start;
+    uint32_t lba = fs->fat->start;
+    uint32_t *cache_cast;
 
-    lba += (offset * sizeof(uint32_t)) / fat->drive->sector_size;
-    offset %= (fat->drive->sector_size / sizeof(uint32_t));
+    lba += (offset * sizeof(uint32_t)) / fs->fat->drive->sector_size;
+    offset %= (fs->fat->drive->sector_size / sizeof(uint32_t));
 
-    if (fat->cache_lba != lba) {
-        err = fat_cache_change(fat, lba);
-        if (err)
-            return 0;
-    }
+    if (lba != fs->fat->cache->address)
+        fat_cache_refresh(fs->fat->cache, fs, lba);
 
-    return fat->cache[offset];
+    cache_cast = (uint32_t *) fs->fat->cache->buffer;
+
+    return cache_cast[offset];
 }
 
 fat_drive_t *fat_drive_init(FILE *image, fat_bpb_t *params)
@@ -95,7 +82,7 @@ fat_fs_t *fat_fs_init(FILE *image)
 
 void fat_fs_fini(fat_fs_t *fs)
 {
-    fat_fini(fs->fat);
+    fat_fini(fs->fat, fs);
     free(fs);
 }
 
@@ -126,19 +113,6 @@ uint8_t fsinfo_read(fat_fsinfo_t *fsinfo, fat_bpb_t *bpb, FILE *image)
     return err;
 }
 
-int fat_cache_change(fat_t *fat, uint32_t new_lba)
-{
-    int err;
-
-    err = cache_refresh(fat->cache, fat->drive->sector_size);
-    if (err)
-        return err;
-    read_sectors(fat->drive->image, 1, new_lba, fat->cache);
-
-    fat->cache_lba = new_lba;
-    return 0;
-}
-
 fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive)
 {
     fat_t *fat_table = malloc(sizeof(fat_t));
@@ -149,17 +123,15 @@ fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive)
     fat_table->size = fat_info->fat_size;
     fat_table->count = fat_info->boot_record.fat_count;
 
-    fat_table->cache = malloc(fat_table->drive->sector_size);
-    read_sectors(drive->image, 1, fat_table->start, fat_table->cache);
-    fat_table->cache_lba = fat_table->start;
+    fat_table->cache = fat_cache_init(fat_table);
 
     return fat_table;
 }
 
-void fat_fini(fat_t *fat)
+void fat_fini(fat_t *fat, fat_fs_t *fs)
 {
+    fat_cache_fini(fat->cache, fs);
     fat_drive_fini(fat->drive);
-    free(fat->cache);
     free(fat);
 }
 

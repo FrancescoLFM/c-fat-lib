@@ -9,6 +9,9 @@
 #define FSINFO_MID           0x61417272
 #define FSINFO_TRAIL         0xAA550000
 
+#define FILE_READ            0
+#define FILE_WRITE           1
+
 #define EOC                  0xffffff8
 
 #define ENTRY_SIZE           32
@@ -26,6 +29,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h> 
+
+typedef struct fat_fs fat_fs_t;
+typedef struct fat fat_t;
+typedef struct fat_file fat_file_t;
+typedef struct fat_cache fat_cache_t;
 
 typedef struct
 {
@@ -91,33 +99,49 @@ typedef struct
 fat_drive_t *fat_drive_init(FILE *image, fat_bpb_t *params);
 void fat_drive_fini(fat_drive_t *drive);
 void read_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer);
-int cache_refresh(void *cache, size_t cache_size);
+void write_sectors(FILE *image, uint8_t n, uint32_t lba, void *buffer);
 
-typedef struct
+struct fat_cache
+{
+    size_t size;
+    void *buffer;
+    uint32_t address;
+
+    void (*read) (fat_cache_t *cache, fat_fs_t *fs);
+    void (*write) (fat_cache_t *cache, fat_fs_t *fs);
+};
+
+fat_cache_t *fat_cache_init(fat_t *fat);
+int fat_cache_refresh(fat_cache_t *cache, fat_fs_t *fs, uint32_t new_address);
+fat_cache_t *fat_file_cache_init(fat_file_t *file);
+fat_cache_t *cache_init(size_t cache_size);
+void fat_cache_fini(fat_cache_t *cache, fat_fs_t *fs);
+
+struct fat
 {
     fat_drive_t *drive;
     uint16_t start;
     uint8_t count;
     uint32_t size;
-    uint32_t cache_lba;
-    uint32_t *cache;
-} fat_t;
+    fat_cache_t *cache;
+};
 
 fat_t *fat_init(fat_bpb_t *fat_info, fat_drive_t *drive);
-uint32_t fat_readl(fat_t *fat, uint32_t offset);
-int fat_cache_change(fat_t *fat, uint32_t new_lba);
-void fat_fini(fat_t *fat);
 
-typedef struct
+struct fat_fs
 {
     fat_t *fat;
     uint32_t root_cluster;
     uint32_t free_cluster_count;
     uint32_t free_cluster;
-} fat_fs_t;
+};
 
+uint32_t fat_readl(fat_fs_t *fs, uint32_t offset);
 fat_fs_t *fat_fs_init(FILE *image);
 void fat_fs_fini(fat_fs_t *fs);
+
+
+void fat_fini(fat_t *fat, fat_fs_t *fs);
 
 typedef struct 
 {
@@ -151,22 +175,22 @@ fat_entry_t *fat_entry_copy(fat_entry_t *entry);
 void fat_entry_fini(fat_entry_t *entry);
 size_t fat_dir_entry_get_size(fat_fs_t *fs, fat_entry_t *dir_entry);
 
-typedef struct
+struct fat_file
 {
     fat_entry_t *info;
     fat_fs_t *fs;
     uint32_t cluster;
-    uint32_t cluster_cache;
-    uint8_t *cache;
+    fat_cache_t *cache;
     uint8_t eof;
-} fat_file_t;
+};
 
-void read_cluster(fat_file_t *file, uint32_t cluster, void *buffer);
-uint32_t cluster_chain_read(fat_t *fat, uint32_t start, uint32_t pos);
+void read_cluster(fat_fs_t *fs, uint32_t cluster, void *buffer);
+void write_cluster(fat_fs_t *fs, uint32_t cluster, void *buffer);
+uint32_t cluster_chain_read(fat_fs_t *fs, uint32_t start, uint32_t pos);
+
 
 fat_file_t *fat_file_init(fat_fs_t *fs, fat_entry_t *entry);
 fat_file_t *fat_file_open(fat_fs_t *fs, char *path);
-void fat_file_cache_change(fat_file_t *file, size_t cache_size, uint32_t new_cluster);
 void fat_file_buffered_readb(fat_file_t *file, uint32_t offset, uint8_t *buffer, size_t buffer_size);
 uint16_t fat_file_readl(fat_file_t *file, uint32_t offset);
 uint16_t fat_file_readw(fat_file_t *file, uint32_t offset);
