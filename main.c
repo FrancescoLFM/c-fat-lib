@@ -28,6 +28,29 @@ void print_file(fat_file_t *file)
     print_entry_date(&file->info->creation_date);
 }
 
+void print_file_content(fat_file_t *file)
+{
+    for (int i=0; !file->eof; i++) {
+        if (!(i % 20))
+            putc('\n', stdout);
+        printf("%x ", fat_file_readb(file, i));
+    }
+
+    putc('\n', stdout);
+}
+
+void test_write(fat_file_t *file)
+{
+    char *test_str = "This is a test";
+    int i=0;
+
+    while(test_str[i]) {
+        fat_file_writeb(file, i, test_str[i]);
+        i++;
+    }
+
+}
+
 void *int_copy(void *i)
 {
     int *copy;
@@ -47,7 +70,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    FILE *image = fopen(IMAGE_NAME, "r");
+    FILE *image = fopen(IMAGE_NAME, "r+");
     if (image == NULL)
         return -1;
 
@@ -57,6 +80,10 @@ int main(int argc, char **argv)
 
     if (main_file != NULL) {
         print_file(main_file);
+        test_write(main_file);
+        puts("Press a key to show file content");
+        getc(stdin);
+        print_file_content(main_file);
         fat_file_close(main_file);
     }
     else

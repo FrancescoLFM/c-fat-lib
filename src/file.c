@@ -133,123 +133,36 @@ void fat_file_writeb(fat_file_t *file, uint32_t offset, uint8_t val)
     return;
 }
 
-fat_dir_t *fat_dir_alloc(fat_file_t *dir_file)
-{
-    const uint32_t ENTRY_PER_CLUSTER = dir_file->fs->fat->drive->cluster_size / ENTRY_SIZE;
-    fat_dir_t *dir = malloc(sizeof(fat_dir_t));
-    if (dir == NULL)
-        return NULL;
-
-    dir->entry_count = 0;
-    dir->max_entries = fat_dir_entry_get_size(dir_file->fs, dir_file->info) * ENTRY_PER_CLUSTER;
-    dir->entries = malloc(sizeof(fat_entry_t *) * dir->max_entries);
-    if (dir->entries == NULL) {
-        free(dir);
-        return NULL;
-    }
-
-    return dir;
-}
-
-fat_dir_t *fat_dir_open(fat_file_t *dir)
-{
-    fat_dir_t *file_entries = fat_dir_alloc(dir);
-    uint32_t offset = 0;
-    file_entries->fs = dir->fs;
-    uint32_t attr;
-
-    while (!dir->eof)
-    {
-        attr = fat_file_readb(dir, ATTR_OFFSET + offset);
-        if (attr && attr != LFN)
-            file_entries->entries[file_entries->entry_count++] = fat_entry_init(dir, offset);
-
-        offset += ENTRY_SIZE;
-    }
-
-    return file_entries;
-}
-
-void fat_dir_close(fat_dir_t *dir)
-{
-    for (size_t i = 0; i < dir->entry_count; i++)
-        fat_entry_fini(dir->entries[i]);
-    free(dir->entries);
-    free(dir);
-}
-
-int strcmp_insensitive(const char *s1, const char *s2)
-{
-    while (tolower(*s1) == tolower(*s2) && *s1 && *s2) {
-        s1++;
-        s2++;
-    }
-
-    return *s1 - *s2;
-}
-
 fat_file_t *fat_file_open_recursive(fat_dir_t *dir)
 {
-    uint8_t is_dir;
     fat_file_t *ret = NULL;
-    char *token = strtok_path(NULL, &is_dir);
+    fat_entry_t *file_entry;
+    uint8_t is_dir;
+    char *token;
+
+    token = strtok_path(NULL, &is_dir);
     if (token == NULL)
         return NULL;
 
-    for (size_t i=0; i < dir->entry_count; i++)
-        if (!strcmp_insensitive(token, dir->entries[i]->name)) {
-            fat_file_t *file = fat_file_init(dir->fs, dir->entries[i]);
+    file_entry = fat_dir_search(dir, token);
+    if (file_entry == NULL)
+        goto exit;
 
-            if (file->info->attributes & ARCHIVE) { /* Exit */
-                if (is_dir) {
-                    fat_file_close(file);
-                    ret = NULL;
-                } else
-                    ret = file;
-                goto exit;
-            }
-            
-            else if (file->info->attributes & DIRECTORY) { /* Recur */
-                fat_dir_t *new_dir = fat_dir_open(file);
-                fat_file_t *new_file;
+    if (file_entry->attributes == ARCHIVE && !is_dir)
+        ret = fat_file_init(dir->fs, file_entry);
+        
+    else if (file_entry->attributes == DIRECTORY && is_dir) {
+        fat_dir_t *new_dir;
 
-                new_file = fat_file_open_recursive(new_dir);
+        new_dir = fat_dir_open(dir->fs, file_entry);
 
-                fat_dir_close(new_dir);
-                fat_file_close(file);
-                ret = new_file;
-                goto exit;
-            }
-            else {
-                fat_file_close(file);
-                ret = file;
-                goto exit;
-            }
-        }
+        ret = fat_file_open_recursive(new_dir);
+        fat_dir_close(new_dir);
+    }
 
 exit:
     free(token);
     return ret;
-}
-
-fat_entry_t *root_entry_init(fat_fs_t *fs)
-{
-    fat_entry_t *root_entry;
-
-    root_entry = malloc(sizeof(fat_entry_t));
-
-    root_entry->start_cluster = fs->root_cluster;
-    root_entry->name = malloc(sizeof(char));
-    *root_entry->name = '\0';
-    root_entry->attributes = DIRECTORY;
-    root_entry->creation_time = EMPTY_TIME;
-    root_entry->creation_date = EMPTY_DATE;
-    root_entry->last_access_date = EMPTY_DATE;
-    root_entry->modification_time = EMPTY_TIME;
-    root_entry->modification_date = EMPTY_DATE;
-    root_entry->size = fat_dir_entry_get_size(fs, root_entry);
- 
-    return root_entry;
 }
 
 char *strtok_path(char *path, uint8_t *is_dir)
@@ -282,21 +195,6 @@ char *strtok_path(char *path, uint8_t *is_dir)
     token = strndup(&path_saved[last_pos], token_len);
 
     return token;
-}
-
-fat_dir_t *fat_dir_root_open(fat_fs_t *fs)
-{
-    fat_file_t *root_file;
-    fat_dir_t *root_dir;
-    fat_entry_t *root_entry;
-
-    root_entry = root_entry_init(fs);
-    root_file = fat_file_init(fs, root_entry);
-    root_dir = fat_dir_open(root_file);
-
-    fat_entry_fini(root_entry);
-    fat_file_close(root_file);
-    return root_dir;
 }
 
 fat_file_t *fat_file_open(fat_fs_t *fs, char *path)

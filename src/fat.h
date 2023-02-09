@@ -195,6 +195,7 @@ void fat_file_buffered_readb(fat_file_t *file, uint32_t offset, uint8_t *buffer,
 uint16_t fat_file_readl(fat_file_t *file, uint32_t offset);
 uint16_t fat_file_readw(fat_file_t *file, uint32_t offset);
 uint8_t fat_file_readb(fat_file_t *file, uint32_t offset);
+void fat_file_writeb(fat_file_t *file, uint32_t offset, uint8_t val);
 void fat_file_close(fat_file_t *file);
 
 typedef struct
@@ -208,7 +209,9 @@ typedef struct
 fat_entry_t *fat_entry_init(fat_file_t *dir, uint32_t dir_offset);
 fat_file_t *fat_file_open_recursive(fat_dir_t *dir);
 fat_dir_t *fat_dir_alloc(fat_file_t *dir_file);
-fat_dir_t *fat_dir_open(fat_file_t *dir);
+fat_dir_t *fat_dir_open(fat_fs_t *fs, fat_entry_t *dir_entry);
+fat_entry_t *fat_dir_search(fat_dir_t *dir, char *filename);
+fat_dir_t *fat_dir_root_open(fat_fs_t *fs);
 void fat_dir_close(fat_dir_t *dir);
 
 char *strtok_path(char *path, uint8_t *is_dir);

@@ -148,3 +148,24 @@ void fat_entry_fini(fat_entry_t *entry)
     free(entry->name);
     free(entry);
 }
+
+
+fat_entry_t *root_entry_init(fat_fs_t *fs)
+{
+    fat_entry_t *root_entry;
+
+    root_entry = malloc(sizeof(fat_entry_t));
+
+    root_entry->start_cluster = fs->root_cluster;
+    root_entry->name = malloc(sizeof(char));
+    *root_entry->name = '\0';
+    root_entry->attributes = DIRECTORY;
+    root_entry->creation_time = EMPTY_TIME;
+    root_entry->creation_date = EMPTY_DATE;
+    root_entry->last_access_date = EMPTY_DATE;
+    root_entry->modification_time = EMPTY_TIME;
+    root_entry->modification_date = EMPTY_DATE;
+    root_entry->size = fat_dir_entry_get_size(fs, root_entry);
+ 
+    return root_entry;
+}
