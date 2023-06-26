@@ -1,0 +1,7 @@
+TODO:
+3. Migliorare il sistema di pathing
+4. Creare fat_dir con inheritance a fat_file
+5. Creare tutte le funzioni di manipolazione file
+6. Hard testing
+
+FIXME:

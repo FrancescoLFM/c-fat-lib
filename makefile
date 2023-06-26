@@ -3,7 +3,7 @@ SH = /bin/bash
 IMG 	 = filesystem.img
 
 FAT_TYPE = 32
-SIZE	 = 100
+SIZE	 = 1000
 
 CC = gcc
 CFLAGS = -Wall -Wextra 
@@ -12,8 +12,9 @@ CFLAGS += -I./
 CFLAGS += -g
 
 OBJ = main.o
-OBJ += src/file.o src/fat.o src/array.o src/entry.o src/cache.o src/dir.o
+OBJ += src/cache.o src/fs.o src/table.o
 TARGET = fatinfo
+TESTFILE = /prova.txt
 
 .PHONY=all
 all: $(TARGET)
@@ -27,7 +28,7 @@ $(TARGET): $(OBJ)
 .PHONY = create
 create:
 	rm -f $(IMG)
-	mkfs.fat -s 2 -F $(FAT_TYPE) -C $(IMG) $(SIZE)
+	mkfs.fat -F $(FAT_TYPE) -C $(IMG) $(SIZE)
 
 .PHONY=clean
 clean:
@@ -44,7 +45,7 @@ debug:
 
 .PHONY=analyze
 analyze:
-	valgrind --tool=memcheck --leak-check=full -s ./$(TARGET)
+	valgrind --tool=memcheck --leak-check=full -s ./$(TARGET) $(TESTFILE)
 
 .PHONY=count
 count:

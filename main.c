@@ -1,95 +1,45 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <src/fat.h>
-#include <src/array.h>
+#include <include/fat.h>
 
-#define ARR_SIZE(ARR)   (sizeof(ARR) / sizeof(*ARR))
-#define UNIX_YEAR       1980
-
-void print_entry_time(fat_entry_time_t *time)
+void fat_fs_printinfo(fat_fs_t *fs)
 {
-    printf("%d:%d:%d\n", time->hour, time->minutes, time->seconds);
-    return;
+    puts("-------------------------------");
+    printf("Volume label:\t\t%s\n", fs->volume->label);
+    printf("Sector count:\t\t%u\n", fs->volume->sector_count);
+    printf("Sector size:\t\t%luB\n", fs->volume->sector_size);
+    printf("Cluster size:\t\t%lu Sec\n\n", fs->volume->cluster_size);
+    printf("Fat table address:\t%u\n", fs->table->address);
+    printf("Fat table size:\t\t%lu Sec\n", fs->table->size);
+    printf("Fat table count:\t%u FATs\n", fs->table->count);
+    if (fs->table->cache != NULL)
+        puts("Fat table cache ENGAGED!");
+    printf("\nRoot cluster:\t\t%u\n", fs->info.root_cluster);
+    printf("Free cluster count:\t%u\n", fs->info.free_cluster_count);
+    printf("First free cluster:\t%u\n", fs->info.free_cluster);
+    puts("-------------------------------");
 }
 
-void print_entry_date(fat_entry_date_t *date)
+int main() 
 {
-    printf("%d/%d/%d\n", date->day, date->month, UNIX_YEAR + date->year); 
-    return;
-}
+    FILE *partition;
+    fat_fs_t *fs;
+    uint8_t err = 0;
 
-void print_file(fat_file_t *file)
-{
-    printf("File name: %s\n", file->info->name);
-    printf("File size: %d bytes\n", file->info->size);
-    printf("File creation time: ");
-    print_entry_time(&file->info->creation_time);
-    printf("File creation date: ");
-    print_entry_date(&file->info->creation_date);
-}
-
-void print_file_content(fat_file_t *file)
-{
-    for (int i=0; !file->eof; i++) {
-        if (!(i % 20))
-            putc('\n', stdout);
-        printf("%x ", fat_file_readb(file, i));
+    partition = fopen(DRIVENAME, "r");
+    fs = fat_fs_init(partition);
+    if (fs == NULL) {
+        puts("Filesystem error: failed to initiate filesystem");
+        goto exit;
     }
 
-    putc('\n', stdout);
-}
+    puts("Filesystem initiated.");
+    fat_fs_printinfo(fs);
 
-void test_write(fat_file_t *file)
-{
-    char *test_str = "This is a test";
-    int i=0;
-
-    while(test_str[i]) {
-        fat_file_writeb(file, i, test_str[i]);
-        i++;
-    }
-
-}
-
-void *int_copy(void *i)
-{
-    int *copy;
-
-    copy = malloc(sizeof(int));
-    if (!copy)
-        return NULL;
-
-   *copy = *(int *)i;
-    return copy;
-}
-
-int main(int argc, char **argv)
-{
-    if (argc != 2) {
-        puts("Usage invalid");
-        return 1;
-    }
-
-    FILE *image = fopen(IMAGE_NAME, "r+");
-    if (image == NULL)
-        return -1;
-
-    fat_fs_t *fs = fat_fs_init(image);
-
-    fat_file_t *main_file = fat_file_open(fs, argv[1]);
-
-    if (main_file != NULL) {
-        print_file(main_file);
-        test_write(main_file);
-        puts("Press a key to show file content");
-        getc(stdin);
-        print_file_content(main_file);
-        fat_file_close(main_file);
-    }
-    else
-        puts("Invalid path...");
+    printf("%d\n", free_cluster_count_read(fs));
 
     fat_fs_fini(fs);
-    fclose(image);
-    return 0;
+
+exit:
+    fclose(partition);
+    return err;
 }
