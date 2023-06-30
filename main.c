@@ -7,7 +7,8 @@ void fat_fs_printinfo(fat_fs_t *fs)
     printf("Volume label:\t\t%s\n", fs->volume->label);
     printf("Sector count:\t\t%u\n", fs->volume->sector_count);
     printf("Sector size:\t\t%luB\n", fs->volume->sector_size);
-    printf("Cluster size:\t\t%lu Sec\n\n", fs->volume->cluster_size);
+    printf("Cluster size:\t\t%lu Sec\n", fs->volume->cluster_size);
+    printf("Cluster count:\t\t%u\n\n", fs->volume->cluster_count);
     printf("Fat table address:\t%u\n", fs->table->address);
     printf("Fat table size:\t\t%lu Sec\n", fs->table->size);
     printf("Fat table count:\t%u FATs\n", fs->table->count);

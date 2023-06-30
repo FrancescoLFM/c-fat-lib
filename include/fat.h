@@ -36,8 +36,12 @@
 #define FREE_CLUSTER            0x1EC
 #define UNKNOWN_FREE_CLUSTER    0xFFFFFFFF
 
+#define FAT_READ                0
+#define FAT_WRITE               1
+
 #define FS_ERROR                1
 #define READ_ERROR              0xFFFFFFFF
+#define CLUSTER_ALLOC_ERR       1
 
 typedef struct fat_fsinfo fat_fsinfo_t;
 typedef struct fat_volume fat_volume_t;
@@ -77,14 +81,17 @@ struct fat_fs
     fat_fsinfo_t info;
 };
 
+// src/cache.c
 fat_volume_t *fat_volume_init(FILE *drive);
 uint8_t *read_sector(fat_volume_t *volume, uint32_t lba);
 void fat_volume_fini(fat_volume_t *volume);
 
+// src/fs.c
 fat_fs_t *fat_fs_init(FILE *partition);
 uint8_t fat_fs_getinfo(fat_fs_t *fs);
 void fat_fs_fini(fat_fs_t *fs);
 
+// src/table.c
 fat_table_t *fat_table_init(fat_volume_t *volume);
 void fat_table_fini(fat_table_t *table);
 uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster);

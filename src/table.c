@@ -27,7 +27,7 @@ void fat_table_fini(fat_table_t *table)
     free(table);
 }
 
-uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster)
+uint32_t fat_table_access(fat_fs_t *fs, uint32_t cluster, uint32_t data, uint8_t mode)
 {
     uint32_t offset;
 
@@ -35,18 +35,31 @@ uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster)
     if (fs->table->size * fs->volume->sector_size <= offset)
         return READ_ERROR;
 
-    return cache_readl(fs->table->cache, fs->volume, fs->table->address, offset);
+    if (mode == FAT_READ)
+        return cache_readl(fs->table->cache, fs->volume, fs->table->address, offset);
+    else if (mode == FAT_WRITE)
+        cache_writel(fs->table->cache, fs->volume, fs->table->address, offset, data);
+
+    return 0;
+}
+
+uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster)
+{
+    return fat_table_access(fs, cluster, 0, FAT_READ);
+}
+
+void fat_table_write(fat_fs_t *fs, uint32_t cluster, uint32_t content)
+{
+    fat_table_access(fs, cluster, content, FAT_WRITE);
 }
 
 uint32_t free_cluster_count_read(fat_fs_t *fs)
 {
-    uint32_t count = 0;
+    uint32_t count = fs->info.root_cluster;
 
-    for (uint32_t i=fs->info.root_cluster; i < fs->volume->cluster_count; i++) {
+    for (uint32_t i=count; i < fs->volume->cluster_count; i++) {
         if (fat_table_read(fs, i) == 0) 
             count++;
-        else
-            printf("Found allocated cluster: 0x%x\n", fat_table_read(fs, i));
     }
 
     return count;
@@ -60,4 +73,18 @@ uint32_t first_free_cluster_read(fat_fs_t *fs)
     while (fat_table_read(fs, i) != 0 && i++ < fs->volume->cluster_count);
 
     return i;
+}
+
+uint8_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content)
+{
+    if (fs->info.free_cluster_count == 0)
+        return CLUSTER_ALLOC_ERR;
+    
+    for (uint32_t i=fs->info.free_cluster; i < fs->volume->cluster_count; i++)
+        if (fat_table_read(fs, i) == 0) {
+            fat_table_write(fs, i, content);
+            return 0;
+        }
+
+    return CLUSTER_ALLOC_ERR;
 }
