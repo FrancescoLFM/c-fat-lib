@@ -12,7 +12,7 @@ fat_table_t *fat_table_init(fat_volume_t *volume)
     if (table == NULL)
         puts("Malloc error: not enough space to allocate fat table");
 
-    table->cache = cache_init(FAT_CACHE_SIZE, volume->sector_size);
+    table->cache = cache_init(FAT_CACHE_SIZE, volume->sector_size, read_sector, write_sector);
     if (table->cache == NULL) {
         free(table);
         return NULL;
@@ -21,9 +21,9 @@ fat_table_t *fat_table_init(fat_volume_t *volume)
     return table;
 }
 
-void fat_table_fini(fat_table_t *table, fat_volume_t *volume)
+void fat_table_fini(fat_table_t *table, fat_fs_t *fs)
 {
-    cache_flush(table->cache, volume);
+    cache_flush(table->cache, fs);
     cache_fini(table->cache);
     free(table);
 }
@@ -37,9 +37,9 @@ uint32_t fat_table_access(fat_fs_t *fs, uint32_t cluster, uint32_t data, uint8_t
         return READ_ERROR;
 
     if (mode == FAT_READ)
-        return cache_readl(fs->table->cache, fs->volume, fs->table->address, offset);
+        return cache_readl(fs->table->cache, fs, fs->table->address, offset);
     else if (mode == FAT_WRITE)
-        cache_writel(fs->table->cache, fs->volume, fs->table->address, offset, data);
+        cache_writel(fs->table->cache, fs, fs->table->address, offset, data);
 
     return 0;
 }

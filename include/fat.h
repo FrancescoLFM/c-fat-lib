@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include <include/cache.h>
+#define CACHE_READ      0
+#define CACHE_WRITE     1
 
 #define DRIVENAME                    "filesystem.img"
 
@@ -51,6 +52,8 @@ typedef struct fat_volume fat_volume_t;
 typedef struct fat_table fat_table_t;
 typedef struct fat_fs fat_fs_t;
 typedef struct cache cache_t;
+typedef struct cache_line cache_line_t;
+typedef struct fat_volume fat_volume_t;
 
 struct fat_volume
 {
@@ -67,6 +70,7 @@ struct fat_fsinfo
     uint32_t sector;
     uint8_t *buffer;
     uint32_t root_cluster;
+    uint32_t data_region;
     uint32_t free_cluster_count;
     uint32_t free_cluster;
 };
@@ -86,20 +90,48 @@ struct fat_fs
     fat_fsinfo_t info;
 };
 
+struct cache_line 
+{
+    int valid;
+    int tag;
+    uint8_t *data;
+};
+
+struct cache
+{
+    size_t cache_size;
+    size_t block_size;
+    uint8_t *(*read) (fat_fs_t *, uint32_t);
+    void (*write) (fat_fs_t *, uint32_t, uint8_t *);
+    cache_line_t *lines;
+};
+
 // src/cache.c
-fat_volume_t *fat_volume_init(FILE *drive);
-uint8_t *read_sector(fat_volume_t *volume, uint32_t lba);
-void write_sector(fat_volume_t *volume, uint32_t lba, uint8_t *buffer);
-void fat_volume_fini(fat_volume_t *volume);
+
+cache_t *cache_init(size_t cache_size, size_t block_size, uint8_t *(*read_fun)(fat_fs_t *, uint32_t), void (*write_fun) (fat_fs_t *, uint32_t, uint8_t *));
+cache_line_t *cache_lines_create(size_t line_count);
+uint8_t cache_readb(cache_t *cache, fat_fs_t *fs, uint32_t sector, uint32_t offset);
+uint32_t cache_readl(cache_t *cache, fat_fs_t *fs, uint32_t sector, uint32_t offset);
+void cache_writeb(cache_t *cache, fat_fs_t *fs, uint32_t sector, uint32_t offset, uint8_t data);
+void cache_writel(cache_t *cache, fat_fs_t *fs, uint32_t sector, uint32_t offset, uint32_t data);
+void cache_flush(cache_t *cache, fat_fs_t *fs);
+void cache_lines_destroy(cache_line_t *cache_lines, size_t line_count);
+void cache_fini(cache_t *cache);
 
 // src/fs.c
+fat_volume_t *fat_volume_init(FILE *drive);
+uint8_t *read_sector(fat_fs_t *fs, uint32_t lba);
+uint8_t *read_sectors(fat_fs_t *fs, uint32_t lba, uint32_t n);
+void write_sector(fat_fs_t *fs, uint32_t lba, uint8_t *buffer);
+void fat_volume_fini(fat_volume_t *volume);
+
 fat_fs_t *fat_fs_init(FILE *partition);
 uint8_t fat_fs_getinfo(fat_fs_t *fs);
 void fat_fs_fini(fat_fs_t *fs);
 
 // src/table.c
 fat_table_t *fat_table_init(fat_volume_t *volume);
-void fat_table_fini(fat_table_t *table, fat_volume_t *volume);
+void fat_table_fini(fat_table_t *table, fat_fs_t *fs);
 uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster);
 uint32_t free_cluster_count_read(fat_fs_t *fs);
 uint32_t first_free_cluster_read(fat_fs_t *fs);

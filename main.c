@@ -4,7 +4,7 @@
 void fat_fs_printinfo(fat_fs_t *fs)
 {
     puts("-------------------------------");
-    printf("Volume label:\t\t%s\n", fs->volume->label);
+    // printf("Volume label:\t\t%s\n", fs->volume->label);
     printf("Sector count:\t\t%u\n", fs->volume->sector_count);
     printf("Sector size:\t\t%luB\n", fs->volume->sector_size);
     printf("Cluster size:\t\t%lu Sec\n", fs->volume->cluster_size);
@@ -36,7 +36,7 @@ int main()
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
 
-    fat_table_alloc_cluster(fs, EOC1);
+    // fat_table_alloc_cluster(fs, EOC1);
 
     fat_fs_fini(fs);
 

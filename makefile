@@ -3,7 +3,7 @@ SH = /bin/bash
 IMG 	 = filesystem.img
 
 FAT_TYPE = 32
-SIZE	 = 100
+SIZE	 = 200
 
 CC = gcc
 CFLAGS = -Wall -Wextra 
