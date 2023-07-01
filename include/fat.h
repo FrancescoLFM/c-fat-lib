@@ -43,6 +43,9 @@
 #define READ_ERROR              0xFFFFFFFF
 #define CLUSTER_ALLOC_ERR       1
 
+#define EOC1                    0xFFFFFF8
+#define EOC2                    0xFFFFFFF
+
 typedef struct fat_fsinfo fat_fsinfo_t;
 typedef struct fat_volume fat_volume_t;
 typedef struct fat_table fat_table_t;
@@ -61,6 +64,8 @@ struct fat_volume
 
 struct fat_fsinfo
 {
+    uint32_t sector;
+    uint8_t *buffer;
     uint32_t root_cluster;
     uint32_t free_cluster_count;
     uint32_t free_cluster;
@@ -84,6 +89,7 @@ struct fat_fs
 // src/cache.c
 fat_volume_t *fat_volume_init(FILE *drive);
 uint8_t *read_sector(fat_volume_t *volume, uint32_t lba);
+void write_sector(fat_volume_t *volume, uint32_t lba, uint8_t *buffer);
 void fat_volume_fini(fat_volume_t *volume);
 
 // src/fs.c
@@ -93,9 +99,10 @@ void fat_fs_fini(fat_fs_t *fs);
 
 // src/table.c
 fat_table_t *fat_table_init(fat_volume_t *volume);
-void fat_table_fini(fat_table_t *table);
+void fat_table_fini(fat_table_t *table, fat_volume_t *volume);
 uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster);
 uint32_t free_cluster_count_read(fat_fs_t *fs);
 uint32_t first_free_cluster_read(fat_fs_t *fs);
+uint32_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content);
 
 #endif

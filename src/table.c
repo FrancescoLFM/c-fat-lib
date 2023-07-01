@@ -21,8 +21,9 @@ fat_table_t *fat_table_init(fat_volume_t *volume)
     return table;
 }
 
-void fat_table_fini(fat_table_t *table)
+void fat_table_fini(fat_table_t *table, fat_volume_t *volume)
 {
+    cache_flush(table->cache, volume);
     cache_fini(table->cache);
     free(table);
 }
@@ -75,7 +76,7 @@ uint32_t first_free_cluster_read(fat_fs_t *fs)
     return i;
 }
 
-uint8_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content)
+uint32_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content)
 {
     if (fs->info.free_cluster_count == 0)
         return CLUSTER_ALLOC_ERR;
@@ -83,7 +84,9 @@ uint8_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content)
     for (uint32_t i=fs->info.free_cluster; i < fs->volume->cluster_count; i++)
         if (fat_table_read(fs, i) == 0) {
             fat_table_write(fs, i, content);
-            return 0;
+            fs->info.free_cluster_count--;
+            fs->info.free_cluster = i;
+            return i;
         }
 
     return CLUSTER_ALLOC_ERR;

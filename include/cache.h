@@ -32,6 +32,7 @@ uint8_t cache_readb(cache_t *cache, fat_volume_t *volume, uint32_t sector, uint3
 uint32_t cache_readl(cache_t *cache, fat_volume_t *volume, uint32_t sector, uint32_t offset);
 void cache_writeb(cache_t *cache, fat_volume_t *volume, uint32_t sector, uint32_t offset, uint8_t data);
 void cache_writel(cache_t *cache, fat_volume_t *volume, uint32_t sector, uint32_t offset, uint32_t data);
+void cache_flush(cache_t *cache, fat_volume_t *volume);
 void cache_lines_destroy(cache_line_t *cache_lines, size_t line_count);
 void cache_fini(cache_t *cache);
 

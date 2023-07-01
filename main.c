@@ -26,7 +26,7 @@ int main()
     fat_fs_t *fs;
     uint8_t err = 0;
 
-    partition = fopen(DRIVENAME, "r");
+    partition = fopen(DRIVENAME, "r+");
     fs = fat_fs_init(partition);
     if (fs == NULL) {
         puts("Filesystem error: failed to initiate filesystem");
@@ -36,7 +36,7 @@ int main()
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
 
-    printf("%d\n", free_cluster_count_read(fs));
+    fat_table_alloc_cluster(fs, EOC1);
 
     fat_fs_fini(fs);
 
