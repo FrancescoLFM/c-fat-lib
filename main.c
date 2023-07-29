@@ -36,8 +36,6 @@ int main()
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
 
-    // fat_table_alloc_cluster(fs, EOC1);
-
     fat_fs_fini(fs);
 
 exit:

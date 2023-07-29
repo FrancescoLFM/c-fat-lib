@@ -12,7 +12,7 @@ CFLAGS += -I./
 CFLAGS += -g
 
 OBJ = main.o
-OBJ += src/cache.o src/fs.o src/table.o
+OBJ += src/cache.o src/fs.o src/table.o src/file.o src/dir.o
 TARGET = fatinfo
 TESTFILE = /prova.txt
 

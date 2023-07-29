@@ -24,63 +24,6 @@ fat_volume_t *fat_volume_init(FILE *drive)
     return volume;
 }
 
-uint8_t *read_sector(fat_fs_t *fs, uint32_t lba)
-{
-    uint8_t *buffer;
-    fat_volume_t *volume = fs->volume;
-
-    if (lba > volume->sector_count) {
-        puts("Disk error: tried reading off the bounds.");
-        return NULL;
-    }
-
-    buffer = malloc(sizeof(uint8_t) * volume->sector_size);
-    if (buffer == NULL) {
-        puts("Malloc error: not enough space to allocate disk buffer");
-        return NULL;
-    }
-    
-    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
-    fread(buffer, sizeof(*buffer), volume->sector_size, volume->drive);
-
-    return buffer;
-}
-
-uint8_t *read_sectors(fat_fs_t *fs, uint32_t lba, uint32_t n)
-{
-    uint8_t *buffer;
-    fat_volume_t *volume = fs->volume;
-
-    if (lba + n - 1 > volume->sector_count) {
-        puts("Disk error: tried reading off the bounds.");
-        return NULL;
-    }
-
-    buffer = malloc(sizeof(uint8_t) * volume->sector_size * n);
-    if (buffer == NULL) {
-        puts("Malloc error: not enough space to allocate disk buffer");
-        return NULL;
-    }
-    
-    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
-    fread(buffer, sizeof(*buffer), volume->sector_size * n, volume->drive);
-
-    return buffer;
-}
-
-void write_sector(fat_fs_t *fs, uint32_t lba, uint8_t *buffer)
-{
-    fat_volume_t *volume = fs->volume;
-
-    if (lba > volume->sector_count) {
-        puts("Disk error: tried writing off the bounds.");
-        return;
-    }
-
-    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
-    fwrite(buffer, sizeof(*buffer), volume->sector_size, volume->drive);
-}
-
 void fat_volume_fini(fat_volume_t *volume)
 {
     free(volume->label);
@@ -99,6 +42,7 @@ void fat_volume_getinfo(fat_volume_t *volume, uint8_t *info_buffer)
         volume->sector_count = BYTES_TO_LONG(info_buffer, LARGE_SECTOR_COUNT);
 
     volume->cluster_size = info_buffer[SECTOR_PER_CLUSTER];
+    volume->cluster_sizeb = volume->cluster_size * volume->sector_size;
 }
 
 void fat_table_getinfo(fat_table_t *fat_table, uint8_t *info_buffer)
@@ -164,6 +108,24 @@ void fat_fsinfo_flush(fat_fs_t *fs)
     write_sector(fs, fs->info.sector, fs->info.buffer);
 }
 
+entry_t *fake_entry_create(uint32_t cluster, char *name)
+{
+    entry_t *fake_entry;
+
+    fake_entry = malloc(sizeof(*fake_entry));
+    if (fake_entry == NULL) {
+        puts("Malloc error: not enough space to allocate fake entry");
+        return NULL;
+    }
+
+    memset(fake_entry, 0, sizeof(*fake_entry));
+    strncpy(fake_entry->short_name, name, SHORT_NAME_LEN);
+    fake_entry->low_cluster = cluster & 0xFF;
+    fake_entry->high_cluster = cluster >> 16;
+
+    return fake_entry;
+}
+
 fat_fs_t *fat_fs_init(FILE *partition)
 {
     fat_fs_t *fs;
@@ -196,6 +158,8 @@ fat_fs_t *fat_fs_init(FILE *partition)
         return NULL;
     }
 
+    fs->root_entry = fake_entry_create(fs->info.root_cluster, "/");
+
     return fs;
 }
 
@@ -208,6 +172,77 @@ void fat_fs_fini(fat_fs_t *fs)
     fat_table_fini(fs->table, fs);
     fat_volume_fini(fs->volume);
     free(fs);
+}
+
+
+uint8_t *read_sector(fat_fs_t *fs, uint32_t lba)
+{
+    uint8_t *buffer;
+    fat_volume_t *volume = fs->volume;
+
+    if (lba > volume->sector_count) {
+        puts("Disk error: tried reading off the bounds.");
+        return NULL;
+    }
+
+    buffer = malloc(sizeof(uint8_t) * volume->sector_size);
+    if (buffer == NULL) {
+        puts("Malloc error: not enough space to allocate disk buffer");
+        return NULL;
+    }
+    
+    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
+    fread(buffer, sizeof(*buffer), volume->sector_size, volume->drive);
+
+    return buffer;
+}
+
+uint8_t *read_sectors(fat_fs_t *fs, uint32_t lba, uint32_t n)
+{
+    uint8_t *buffer;
+    fat_volume_t *volume = fs->volume;
+
+    if (lba + n - 1 > volume->sector_count) {
+        puts("Disk error: tried reading off the bounds.");
+        return NULL;
+    }
+
+    buffer = malloc(sizeof(uint8_t) * volume->sector_size * n);
+    if (buffer == NULL) {
+        puts("Malloc error: not enough space to allocate disk buffer");
+        return NULL;
+    }
+    
+    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
+    fread(buffer, sizeof(*buffer), volume->sector_size * n, volume->drive);
+
+    return buffer;
+}
+
+void write_sector(fat_fs_t *fs, uint32_t lba, uint8_t *buffer)
+{
+    fat_volume_t *volume = fs->volume;
+
+    if (lba > volume->sector_count) {
+        puts("Disk error: tried writing off the bounds.");
+        return;
+    }
+
+    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
+    fwrite(buffer, sizeof(*buffer), volume->sector_size, volume->drive);
+}
+
+void write_sectors(fat_fs_t *fs, uint32_t lba, uint8_t *buffer, uint32_t n)
+{
+    fat_volume_t *volume = fs->volume;
+
+    if (lba + n - 1 > volume->sector_count) {
+        puts("Disk error: tried writing off the bounds.");
+        return;
+    }
+
+    fseek(volume->drive, lba * volume->sector_size, SEEK_SET);
+    fwrite(buffer, sizeof(*buffer), volume->sector_size * n, volume->drive);
 }
 
 uint8_t *read_cluster(fat_fs_t *fs, uint32_t cluster)
@@ -231,5 +266,14 @@ uint8_t *read_cluster(fat_fs_t *fs, uint32_t cluster)
 
 void write_cluster(fat_fs_t *fs, uint32_t cluster, uint8_t *buffer)
 {
+    uint32_t offset;
 
+    if (cluster > fs->volume->cluster_count) {
+        puts("Disk error: reading cluster off the bounds");
+        return;
+    }
+
+    offset = cluster * fs->volume->cluster_size;
+    
+    write_sectors(fs, fs->info.data_region + offset, buffer, fs->volume->cluster_size);
 }

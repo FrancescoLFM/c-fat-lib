@@ -46,6 +46,9 @@
 
 #define EOC1                    0xFFFFFF8
 #define EOC2                    0xFFFFFFF
+#define FAT_EOF                 0x1a
+#define SHORT_NAME_LEN          11
+#define WORDS_TO_LONG(HIGH, LOW)    (LOW + (HIGH << 16))
 
 typedef struct fat_fsinfo fat_fsinfo_t;
 typedef struct fat_volume fat_volume_t;
@@ -53,7 +56,9 @@ typedef struct fat_table fat_table_t;
 typedef struct fat_fs fat_fs_t;
 typedef struct cache cache_t;
 typedef struct cache_line cache_line_t;
-typedef struct fat_volume fat_volume_t;
+typedef struct entry entry_t;
+typedef struct file file_t;
+typedef struct dir dir_t;
 
 struct fat_volume
 {
@@ -63,6 +68,7 @@ struct fat_volume
     uint32_t cluster_count;
     size_t sector_size;
     size_t cluster_size; // In sectors
+    size_t cluster_sizeb;
 };
 
 struct fat_fsinfo
@@ -88,6 +94,7 @@ struct fat_fs
     fat_volume_t *volume;
     fat_table_t *table;
     fat_fsinfo_t info;
+    entry_t *root_entry;
 };
 
 struct cache_line 
@@ -104,6 +111,33 @@ struct cache
     uint8_t *(*read) (fat_fs_t *, uint32_t);
     void (*write) (fat_fs_t *, uint32_t, uint8_t *);
     cache_line_t *lines;
+};
+
+struct entry
+{
+    char short_name[SHORT_NAME_LEN];
+    uint8_t attr;
+    uint16_t reserved;
+    uint32_t ctime;
+    uint16_t atime;
+    uint16_t high_cluster;
+    uint32_t mtime;
+    uint16_t low_cluster;
+    uint16_t size;
+};
+
+struct file
+{
+    entry_t *entry;
+    cache_t *cache;
+    uint32_t cluster;
+};
+
+struct dir
+{
+    file_t *ident;
+    size_t size;
+    entry_t **entries;
 };
 
 // src/cache.c
@@ -124,6 +158,8 @@ uint8_t *read_sector(fat_fs_t *fs, uint32_t lba);
 uint8_t *read_sectors(fat_fs_t *fs, uint32_t lba, uint32_t n);
 void write_sector(fat_fs_t *fs, uint32_t lba, uint8_t *buffer);
 void fat_volume_fini(fat_volume_t *volume);
+uint8_t *read_cluster(fat_fs_t *fs, uint32_t cluster);
+void write_cluster(fat_fs_t *fs, uint32_t cluster, uint8_t *buffer);
 
 fat_fs_t *fat_fs_init(FILE *partition);
 uint8_t fat_fs_getinfo(fat_fs_t *fs);
@@ -136,5 +172,12 @@ uint32_t fat_table_read(fat_fs_t *fs, uint32_t cluster);
 uint32_t free_cluster_count_read(fat_fs_t *fs);
 uint32_t first_free_cluster_read(fat_fs_t *fs);
 uint32_t fat_table_alloc_cluster(fat_fs_t *fs, uint32_t content);
+uint32_t cluster_chain_get_len(fat_fs_t *fs, uint32_t start);
+uint32_t cluster_chain_read(fat_fs_t *fs, uint32_t curr, uint32_t index);
+
+// src/file.c
+file_t *file_open(fat_fs_t *fs, entry_t *entry);
+void file_close(fat_fs_t *fs, file_t *file);
+uint8_t file_readb(file_t *file, fat_fs_t *fs, uint32_t offset);
 
 #endif
