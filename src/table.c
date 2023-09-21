@@ -100,7 +100,7 @@ uint32_t cluster_chain_get_len(fat_fs_t *fs, uint32_t start)
     do {
         curr = fat_table_read(fs, start);
         len++;
-    } while (curr != EOC1 || curr != EOC2 || curr != READ_ERROR);
+    } while (curr != EOC1 && curr != EOC2 && curr != READ_ERROR);
 
     return len;
 }
@@ -112,7 +112,7 @@ uint32_t cluster_chain_read(fat_fs_t *fs, uint32_t curr, uint32_t index)
     do {
         ret = curr;
         curr = fat_table_read(fs, curr);
-    } while (index-- || curr != EOC1 || curr != EOC2);
+    } while (index-- && curr != EOC1 && curr != EOC2);
 
     return ret;
 }

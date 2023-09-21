@@ -50,6 +50,9 @@
 #define SHORT_NAME_LEN          11
 #define WORDS_TO_LONG(HIGH, LOW)    (LOW + (HIGH << 16))
 
+#define LFN_ATTR                0x0F
+#define ATTR_OFFSET             11
+
 typedef struct fat_fsinfo fat_fsinfo_t;
 typedef struct fat_volume fat_volume_t;
 typedef struct fat_table fat_table_t;
@@ -179,5 +182,10 @@ uint32_t cluster_chain_read(fat_fs_t *fs, uint32_t curr, uint32_t index);
 file_t *file_open(fat_fs_t *fs, entry_t *entry);
 void file_close(fat_fs_t *fs, file_t *file);
 uint8_t file_readb(file_t *file, fat_fs_t *fs, uint32_t offset);
+uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size);
+
+// src/dir.c
+dir_t *dir_init(fat_fs_t *fs, entry_t *entry);
+void dir_scan(fat_fs_t *fs, dir_t *dir);
 
 #endif

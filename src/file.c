@@ -12,7 +12,7 @@ file_t *file_open(fat_fs_t *fs, entry_t *entry)
     }
 
     file->entry = entry;
-    file->cache = cache_init((entry->size / fs->volume->cluster_sizeb) + 1, fs->volume->cluster_size, 
+    file->cache = cache_init((entry->size / fs->volume->cluster_sizeb) + 1, fs->volume->cluster_sizeb, 
                               read_cluster, write_cluster);
     if (file->cache == NULL) {
         puts("File error: not enough space to init the file cache");
@@ -27,17 +27,28 @@ file_t *file_open(fat_fs_t *fs, entry_t *entry)
 uint8_t file_readb(file_t *file, fat_fs_t *fs, uint32_t offset)
 {
     uint32_t cluster;
-    uint8_t *buffer;
 
     if (offset > file->entry->size)
         return FAT_EOF;
 
     cluster = cluster_chain_read(fs, file->cluster, offset / fs->volume->cluster_sizeb);
-    buffer = file->cache->read(fs, cluster);
-    if (buffer == NULL)
-        return 0;
+    return cache_readb(file->cache, fs, cluster, offset);
+}
 
-    return buffer[offset % fs->volume->cluster_sizeb];
+uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size)
+{
+    uint8_t *buffer;
+
+    buffer = malloc(size * sizeof(uint8_t));
+    if (buffer == NULL) {
+        puts("Memory error: not enough space to save file buffer");
+        return NULL;
+    }
+
+    for (size_t i=0; i < size; i++)
+        buffer[i] = file_readb(file, fs, offset + i);
+
+    return buffer;
 }
 
 void file_close(fat_fs_t *fs, file_t *file) 

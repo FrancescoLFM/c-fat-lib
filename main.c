@@ -22,6 +22,7 @@ void fat_fs_printinfo(fat_fs_t *fs)
 
 int main() 
 {
+    dir_t *root;
     FILE *partition;
     fat_fs_t *fs;
     uint8_t err = 0;
@@ -35,6 +36,11 @@ int main()
 
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
+
+    root = dir_init(fs, fs->root_entry);
+    dir_scan(fs, root);
+
+    printf("Interno root: %s\n", root->entries[0]->short_name);
 
     fat_fs_fini(fs);
 

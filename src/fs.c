@@ -108,7 +108,7 @@ void fat_fsinfo_flush(fat_fs_t *fs)
     write_sector(fs, fs->info.sector, fs->info.buffer);
 }
 
-entry_t *fake_entry_create(uint32_t cluster, char *name)
+entry_t *fake_entry_create(uint32_t cluster, char *name, size_t size)
 {
     entry_t *fake_entry;
 
@@ -122,6 +122,7 @@ entry_t *fake_entry_create(uint32_t cluster, char *name)
     strncpy(fake_entry->short_name, name, SHORT_NAME_LEN);
     fake_entry->low_cluster = cluster & 0xFF;
     fake_entry->high_cluster = cluster >> 16;
+    fake_entry->size = size;
 
     return fake_entry;
 }
@@ -158,13 +159,14 @@ fat_fs_t *fat_fs_init(FILE *partition)
         return NULL;
     }
 
-    fs->root_entry = fake_entry_create(fs->info.root_cluster, "/");
+    fs->root_entry = fake_entry_create(fs->info.root_cluster, "/", fs->volume->sector_count * fs->volume->sector_size);
 
     return fs;
 }
 
 void fat_fs_fini(fat_fs_t *fs)
 {
+    free(fs->root_entry);
     if (fs->info.buffer != NULL) {
         fat_fsinfo_flush(fs);
         free(fs->info.buffer);
@@ -257,7 +259,7 @@ uint8_t *read_cluster(fat_fs_t *fs, uint32_t cluster)
 
     offset = cluster * fs->volume->cluster_size;
 
-    buffer = read_sectors(fs, fs->info.data_region + offset, fs->volume->cluster_size);
+    buffer = read_sectors(fs, fs->info.data_region + offset - 2, fs->volume->cluster_size);
     if (buffer == NULL)
         return NULL;
     
