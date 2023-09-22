@@ -48,6 +48,8 @@
 #define EOC2                    0xFFFFFFF
 #define FAT_EOF                 0x1a
 #define SHORT_NAME_LEN          11
+#define FILENAME_LEN            8
+#define FILE_EXT_LEN            3
 #define WORDS_TO_LONG(HIGH, LOW)    (LOW + (HIGH << 16))
 
 #define LFN_ATTR                0x0F
@@ -114,6 +116,12 @@ struct cache
     uint8_t *(*read) (fat_fs_t *, uint32_t);
     void (*write) (fat_fs_t *, uint32_t, uint8_t *);
     cache_line_t *lines;
+};
+
+struct short_name 
+{
+    char name[FILENAME_LEN];
+    char ext[FILE_EXT_LEN];
 };
 
 struct entry
@@ -187,5 +195,7 @@ uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size);
 // src/dir.c
 dir_t *dir_init(fat_fs_t *fs, entry_t *entry);
 void dir_scan(fat_fs_t *fs, dir_t *dir);
+entry_t *dir_search(dir_t *dir, char *name);
+void dir_close(fat_fs_t *fs, dir_t *dir);
 
 #endif

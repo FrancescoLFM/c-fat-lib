@@ -40,7 +40,9 @@ int main()
     root = dir_init(fs, fs->root_entry);
     dir_scan(fs, root);
 
-    printf("Interno root: %s\n", root->entries[0]->short_name);
+    printf("File di prova: %s\n", dir_search(root, "praadfsadswswaf.txt")->short_name);
+
+    dir_close(fs, root);
 
     fat_fs_fini(fs);
 
