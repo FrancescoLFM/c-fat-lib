@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <include/fat.h>
+#include <stdlib.h>
 
 void fat_fs_printinfo(fat_fs_t *fs)
 {
@@ -40,7 +41,8 @@ int main()
     root = dir_init(fs, fs->root_entry);
     dir_scan(fs, root);
 
-    printf("File di prova: %s\n", dir_search(root, "praadfsadswswaf.txt")->short_name);
+    entry_t *file_entry = dir_search_path(fs, root, "sdrogo/prova.txt");
+    free(file_entry);
 
     dir_close(fs, root);
 

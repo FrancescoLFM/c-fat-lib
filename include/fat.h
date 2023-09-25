@@ -53,7 +53,17 @@
 #define WORDS_TO_LONG(HIGH, LOW)    (LOW + (HIGH << 16))
 
 #define LFN_ATTR                0x0F
+#define DIR_ATTR                0x10
+#define FILE_ATTR               0x20
 #define ATTR_OFFSET             11
+#define CTIME_OFFSET            14
+#define ATIME_OFFSET            18
+#define HIGH_CLUSTER_OFFSET     20
+#define MTIME_OFFSET            22
+#define LOW_CLUSTER_OFFSET      26
+#define SIZE_OFFSET             28
+
+#define INVALID_ENTRY           (char) (0xE5)
 
 typedef struct fat_fsinfo fat_fsinfo_t;
 typedef struct fat_volume fat_volume_t;
@@ -196,6 +206,7 @@ uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size);
 dir_t *dir_init(fat_fs_t *fs, entry_t *entry);
 void dir_scan(fat_fs_t *fs, dir_t *dir);
 entry_t *dir_search(dir_t *dir, char *name);
+entry_t *dir_search_path(fat_fs_t *fs, dir_t *dir, char *path);
 void dir_close(fat_fs_t *fs, dir_t *dir);
 
 #endif

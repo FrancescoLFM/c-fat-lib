@@ -7,7 +7,7 @@
 dir_t *dir_init(fat_fs_t *fs, entry_t *entry)
 {
     dir_t *dir;
-    size_t raw_size;
+    size_t raw_size = cluster_chain_get_len(fs, WORDS_TO_LONG(entry->high_cluster, entry->low_cluster)) * fs->volume->cluster_sizeb;
 
     dir = malloc(sizeof(*dir));
     if (dir == NULL) {
@@ -15,14 +15,15 @@ dir_t *dir_init(fat_fs_t *fs, entry_t *entry)
         return NULL;
     }
 
+    entry->size = raw_size;
     dir->ident = file_open(fs, entry);
     if (dir->ident == NULL) {
         free(dir);
         return NULL;
     }
-    raw_size = cluster_chain_get_len(fs, WORDS_TO_LONG(entry->high_cluster, entry->low_cluster)) * fs->volume->cluster_sizeb;
+
     dir->size = raw_size / sizeof(*entry);
-    dir->entries = malloc(raw_size);
+    dir->entries = calloc(dir->size, sizeof(*entry) * raw_size);
     if (dir->entries == NULL) {
         puts("Malloc error: not enough space to allocate directory entries");
         file_close(fs, dir->ident);
@@ -42,6 +43,13 @@ entry_t *dir_read_entry(fat_fs_t *fs, dir_t *dir, size_t offset)
     memset(ret, 0, sizeof(*ret));
     raw_entry = file_read(dir->ident, fs, offset, sizeof(*ret));
     strncpy(ret->short_name, (char *) raw_entry, SHORT_NAME_LEN);
+    ret->attr = raw_entry[ATTR_OFFSET];
+    ret->low_cluster = BYTES_TO_WORD(raw_entry, LOW_CLUSTER_OFFSET);
+    ret->ctime = BYTES_TO_LONG(raw_entry, CTIME_OFFSET);
+    ret->atime = BYTES_TO_LONG(raw_entry, ATIME_OFFSET);
+    ret->high_cluster = BYTES_TO_LONG(raw_entry, HIGH_CLUSTER_OFFSET);
+    ret->mtime = BYTES_TO_LONG(raw_entry, MTIME_OFFSET);
+    ret->size = BYTES_TO_LONG(raw_entry, SIZE_OFFSET);
 
     free(raw_entry);
     return ret;
@@ -51,20 +59,17 @@ void dir_scan(fat_fs_t *fs, dir_t *dir)
 {
     size_t offset = 0;
     uint8_t entry_attr;
+    entry_t *temp_entry;
 
-    for (size_t i=0; i < dir->size;) {
+    for (size_t i=0; offset < dir->ident->entry->size;) {
         entry_attr = file_readb(dir->ident, fs, offset + ATTR_OFFSET);
-        if (entry_attr == LFN_ATTR) {
+        if (entry_attr == LFN_ATTR)
             offset += sizeof(entry_t);
-            dir->entries[i] = dir_read_entry(fs, dir, offset);
-            i++;
+        if (entry_attr != 0) {
+            temp_entry = dir_read_entry(fs, dir, offset);
+            if (temp_entry->short_name[0] != INVALID_ENTRY)
+                dir->entries[i++] = temp_entry;
         }
-
-        else if (entry_attr != 0) {
-            dir->entries[i] = dir_read_entry(fs, dir, offset);
-            i++;
-        }
-        
         offset += sizeof(entry_t);
     }
 }
@@ -111,13 +116,49 @@ int compare_short_name(char* name, char* str) {
 entry_t *dir_search(dir_t *dir, char *name)
 {
     size_t i = 0;
+    entry_t *ret;
 
     do {
-        if(!compare_short_name(dir->entries[i]->short_name, name))
-            return dir->entries[i];
+        if(dir->entries[i] != NULL &&
+            !compare_short_name(dir->entries[i]->short_name, name)) {
+            ret = malloc(sizeof(*ret));
+            memcpy(ret, dir->entries[i], sizeof(*ret));
+            return ret;
+        }
     } while(++i < dir->size);
 
     return NULL;
+}
+
+entry_t *dir_search_path(fat_fs_t *fs, dir_t *dir, char *path)
+{
+    char filename[12];
+    dir_t *curr_dir = dir;
+    size_t i = 0;
+    entry_t *entry = NULL;
+    entry_t *ret = NULL;
+
+    // Get filename
+    while (*path != '/' && i < 11 && *path) {
+        filename[i++] = *path++;
+    }
+    filename[i] = '\0';
+
+    entry = dir_search(curr_dir, filename);
+    if (entry != NULL) {
+        if (*path == '/') {
+            curr_dir = dir_init(fs, entry);
+            dir_scan(fs, curr_dir);
+            ret = dir_search_path(fs, curr_dir, ++path);
+            dir_close(fs, curr_dir);
+            free(entry);
+        }
+        if (*path == '\0') {
+            return entry;
+        }
+    }
+
+    return ret;
 }
 
 void dir_close(fat_fs_t *fs, dir_t *dir)
