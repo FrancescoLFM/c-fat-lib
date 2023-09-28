@@ -34,6 +34,21 @@ dir_t *dir_init(fat_fs_t *fs, entry_t *entry)
     return dir;
 }
 
+void dir_entry_create(fat_fs_t *fs, dir_t *dir, entry_t *entry)
+{
+    size_t offset = 0;
+    uint8_t entry_tag;
+
+    while (offset < dir->ident->entry->size) {
+        entry_tag = file_readb(dir->ident, fs, offset);
+        if (entry_tag == 0 || entry_tag == (uint8_t) INVALID_ENTRY) {
+            file_write(dir->ident, fs, offset, (uint8_t *) entry, sizeof(*entry));
+            return;
+        }   
+        offset += sizeof(entry_t);
+    }
+}
+
 entry_t *dir_read_entry(fat_fs_t *fs, dir_t *dir, size_t offset)
 {
     uint8_t *raw_entry;
@@ -69,6 +84,7 @@ void dir_scan(fat_fs_t *fs, dir_t *dir)
             temp_entry = dir_read_entry(fs, dir, offset);
             if (temp_entry->short_name[0] != INVALID_ENTRY)
                 dir->entries[i++] = temp_entry;
+            else free(temp_entry);
         }
         offset += sizeof(entry_t);
     }

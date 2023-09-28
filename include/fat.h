@@ -149,6 +149,7 @@ struct entry
 
 struct file
 {
+    char *path;
     entry_t *entry;
     cache_t *cache;
     uint32_t cluster;
@@ -201,12 +202,18 @@ file_t *file_open(fat_fs_t *fs, entry_t *entry);
 void file_close(fat_fs_t *fs, file_t *file);
 uint8_t file_readb(file_t *file, fat_fs_t *fs, uint32_t offset);
 uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size);
+void file_writeb(file_t *file, fat_fs_t *fs, uint32_t offset, uint8_t data);
+void file_write(file_t *file, fat_fs_t *fs, uint32_t offset, uint8_t *data, size_t size);
+void file_create(fat_fs_t *fs, char *path, char *filename);
+file_t *file_open_path(fat_fs_t *fs, char *path);
+entry_t *file_entry_create(char *filename, uint32_t cluster);
 
 // src/dir.c
 dir_t *dir_init(fat_fs_t *fs, entry_t *entry);
 void dir_scan(fat_fs_t *fs, dir_t *dir);
 entry_t *dir_search(dir_t *dir, char *name);
 entry_t *dir_search_path(fat_fs_t *fs, dir_t *dir, char *path);
+void dir_entry_create(fat_fs_t *fs, dir_t *dir, entry_t *entry);
 void dir_close(fat_fs_t *fs, dir_t *dir);
 
 #endif

@@ -277,5 +277,5 @@ void write_cluster(fat_fs_t *fs, uint32_t cluster, uint8_t *buffer)
 
     offset = cluster * fs->volume->cluster_size;
     
-    write_sectors(fs, fs->info.data_region + offset, buffer, fs->volume->cluster_size);
+    write_sectors(fs, fs->info.data_region + offset - 2, buffer, fs->volume->cluster_size);
 }

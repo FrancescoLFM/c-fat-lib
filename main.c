@@ -23,7 +23,7 @@ void fat_fs_printinfo(fat_fs_t *fs)
 
 int main() 
 {
-    dir_t *root;
+    file_t *test_file;
     FILE *partition;
     fat_fs_t *fs;
     uint8_t err = 0;
@@ -38,13 +38,11 @@ int main()
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
 
-    root = dir_init(fs, fs->root_entry);
-    dir_scan(fs, root);
+    file_create(fs, "/sdrogo", "provadir");
+    test_file = file_open_path(fs, "/sdrogo/provadir");
 
-    entry_t *file_entry = dir_search_path(fs, root, "sdrogo/prova.txt");
-    free(file_entry);
-
-    dir_close(fs, root);
+    if (test_file)
+        file_close(fs, test_file);
 
     fat_fs_fini(fs);
 
