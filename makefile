@@ -45,7 +45,7 @@ debug:
 
 .PHONY=analyze
 analyze:
-	valgrind --tool=memcheck --leak-check=full -s ./$(TARGET) $(TESTFILE)
+	valgrind --tool=memcheck -s ./$(TARGET) $(TESTFILE)
 
 .PHONY=count
 count:

@@ -4,10 +4,41 @@
 
 #define TOLOWER(C)   ((C >= 'A' && C <= 'Z') ? C + 32 : C) 
 
+void entry_array_destroy(entry_t **entries, size_t num_entries)
+{
+    for (size_t i = 0; i < num_entries; i++) {
+        if (entries[i] != NULL)
+            free(entries[i]);
+    }
+
+    free(entries);
+}
+
+entry_t **entry_array_create(size_t num_entries)
+{
+    entry_t **entries;
+
+    entries = calloc(num_entries, sizeof(*entries));
+    if (entries == NULL)
+        return NULL;
+    
+    for (size_t i = 0; i < num_entries; i++) {
+        entries[i] = calloc(1, sizeof(*entries[i]));
+        if (entries[i] == NULL) {
+            entry_array_destroy(entries, num_entries);
+            return NULL;
+        }
+    }
+
+    return entries;
+}
+
 dir_t *dir_init(fat_fs_t *fs, entry_t *entry)
 {
     dir_t *dir;
-    size_t raw_size = cluster_chain_get_len(fs, WORDS_TO_LONG(entry->high_cluster, entry->low_cluster)) * fs->volume->cluster_sizeb;
+    size_t raw_size;
+    
+    raw_size = cluster_chain_get_len(fs, WORDS_TO_LONG(entry->high_cluster, entry->low_cluster)) * fs->volume->cluster_sizeb;
 
     dir = malloc(sizeof(*dir));
     if (dir == NULL) {
@@ -15,18 +46,19 @@ dir_t *dir_init(fat_fs_t *fs, entry_t *entry)
         return NULL;
     }
 
-    entry->size = raw_size;
-    dir->ident = file_open(fs, entry);
-    if (dir->ident == NULL) {
+    // Alloco il vettore di entry della directory
+    dir->num_entries = raw_size / sizeof(*entry);
+    dir->entries = entry_array_create(dir->num_entries);
+    if (!dir->entries) {
         free(dir);
         return NULL;
     }
 
-    dir->size = raw_size / sizeof(*entry);
-    dir->entries = calloc(dir->size, sizeof(*entry) * raw_size);
-    if (dir->entries == NULL) {
-        puts("Malloc error: not enough space to allocate directory entries");
-        file_close(fs, dir->ident);
+    // Apro la directory come file
+    entry->size = raw_size;
+    dir->ident = file_open(fs, entry);
+    if (dir->ident == NULL) {
+        entry_array_destroy(dir->entries, dir->num_entries);
         free(dir);
         return NULL;
     }
@@ -49,13 +81,35 @@ void dir_entry_create(fat_fs_t *fs, dir_t *dir, entry_t *entry)
     }
 }
 
+void dir_entry_override(fat_fs_t *fs, dir_t *dir, char *short_name, entry_t *entry)
+{
+    size_t offset = 0;
+    entry_t *curr_entry;
+
+    while (offset < dir->ident->entry->size) {
+        curr_entry = (entry_t *) file_read(dir->ident, fs, offset, sizeof(*curr_entry));
+        if (curr_entry == NULL)
+            return;
+
+        if (!strncmp(curr_entry->short_name, short_name, SHORT_NAME_LEN)) {
+            file_write(dir->ident, fs, offset, (uint8_t *) entry, sizeof(*entry));
+            free(curr_entry);
+            return;
+        }
+
+        offset += sizeof(entry_t);
+        free(curr_entry);
+    }
+
+    return;
+}
+
 entry_t *dir_read_entry(fat_fs_t *fs, dir_t *dir, size_t offset)
 {
     uint8_t *raw_entry;
     entry_t *ret;
 
-    ret = malloc(sizeof(*ret));
-    memset(ret, 0, sizeof(*ret));
+    ret = calloc(1, sizeof(*ret));
     raw_entry = file_read(dir->ident, fs, offset, sizeof(*ret));
     strncpy(ret->short_name, (char *) raw_entry, SHORT_NAME_LEN);
     ret->attr = raw_entry[ATTR_OFFSET];
@@ -82,9 +136,13 @@ void dir_scan(fat_fs_t *fs, dir_t *dir)
             offset += sizeof(entry_t);
         if (entry_attr != 0) {
             temp_entry = dir_read_entry(fs, dir, offset);
-            if (temp_entry->short_name[0] != INVALID_ENTRY)
+            if (temp_entry->short_name[0] != INVALID_ENTRY && temp_entry->short_name[0] != '\0') {
+                if (dir->entries[i] != NULL)
+                    free(dir->entries[i]);
                 dir->entries[i++] = temp_entry;
-            else free(temp_entry);
+            }
+            else 
+                free(temp_entry);
         }
         offset += sizeof(entry_t);
     }
@@ -141,7 +199,7 @@ entry_t *dir_search(dir_t *dir, char *name)
             memcpy(ret, dir->entries[i], sizeof(*ret));
             return ret;
         }
-    } while(++i < dir->size);
+    } while(++i < dir->num_entries);
 
     return NULL;
 }
@@ -161,28 +219,66 @@ entry_t *dir_search_path(fat_fs_t *fs, dir_t *dir, char *path)
     filename[i] = '\0';
 
     entry = dir_search(curr_dir, filename);
-    if (entry != NULL) {
-        if (*path == '/') {
-            curr_dir = dir_init(fs, entry);
-            dir_scan(fs, curr_dir);
-            ret = dir_search_path(fs, curr_dir, ++path);
-            dir_close(fs, curr_dir);
+    if (entry == NULL)
+        return NULL;
+    
+    if (*path == '/') {
+        curr_dir = dir_init(fs, entry);
+        if (curr_dir == NULL) {
             free(entry);
+            return NULL;
         }
-        if (*path == '\0') {
-            return entry;
-        }
+        
+        // Compie la ricerca
+        dir_scan(fs, curr_dir);
+        ret = dir_search_path(fs, curr_dir, ++path);
+            
+        dir_close(fs, curr_dir);
+
+        if (ret == NULL)
+            return NULL;
+    } else if (*path == '\0') { /* caso base */
+        return entry;
+    } else {
+        free(entry);
     }
 
     return ret;
 }
 
+dir_t *dir_open_path(fat_fs_t *fs, char *path)
+{
+    dir_t *starting_dir;
+    entry_t *entry_dir;
+    dir_t *dir;
+
+    if (*path == '/') {
+        starting_dir = fs->root_dir;
+        ++path;
+    }
+    // Non supportiamo la path relativa
+    else
+        return NULL;
+
+    dir_scan(fs, starting_dir);
+    entry_dir = dir_search_path(fs, starting_dir, path);
+    if (entry_dir->attr != DIR_ATTR) {
+        free(entry_dir);
+        return NULL;
+    }
+
+    dir = dir_init(fs, entry_dir);
+    if (dir == NULL) {
+        free(entry_dir);
+        return NULL;
+    }
+
+    return dir;
+}
+
 void dir_close(fat_fs_t *fs, dir_t *dir)
 {
-    for (size_t i=0; i < dir->size; i++)
-        free(dir->entries[i]);
-    free(dir->entries);
-
+    entry_array_destroy(dir->entries, dir->num_entries);
     file_close(fs, dir->ident);
     free(dir);
 }

@@ -112,13 +112,12 @@ entry_t *fake_entry_create(uint32_t cluster, char *name, size_t size)
 {
     entry_t *fake_entry;
 
-    fake_entry = malloc(sizeof(*fake_entry));
+    fake_entry = calloc(1, sizeof(*fake_entry));
     if (fake_entry == NULL) {
         puts("Malloc error: not enough space to allocate fake entry");
         return NULL;
     }
 
-    memset(fake_entry, 0, sizeof(*fake_entry));
     strncpy(fake_entry->short_name, name, SHORT_NAME_LEN);
     fake_entry->low_cluster = cluster & 0xFF;
     fake_entry->high_cluster = cluster >> 16;
@@ -130,47 +129,51 @@ entry_t *fake_entry_create(uint32_t cluster, char *name, size_t size)
 fat_fs_t *fat_fs_init(FILE *partition)
 {
     fat_fs_t *fs;
+    entry_t *root_entry;
 
-    fs = malloc(sizeof(*fs));
-    if (fs == NULL)
-    {
+    fs = calloc(1, sizeof(*fs));
+    if (fs == NULL) {
         puts("Malloc error: not enough space to allocate filesystem");
         return NULL;
     }
 
     fs->volume = fat_volume_init(partition);
-    if (fs->volume == NULL)
-    {
+    if (fs->volume == NULL) {
         free(fs);
         return NULL;
     }
+    
     fs->table = fat_table_init(fs->volume);
-    if (fs->table == NULL)
-    {
+    if (fs->table == NULL) {
         fat_volume_fini(fs->volume);
         free(fs);
         return NULL;
     }
 
-    if (fat_fs_getinfo(fs) == FS_ERROR)
-    {
+    if (fat_fs_getinfo(fs) == FS_ERROR) {
         puts("Fsinfo error: filesystem info structure is corrupted");
         fat_fs_fini(fs);
         return NULL;
     }
 
-    fs->root_entry = fake_entry_create(fs->info.root_cluster, "/", fs->volume->sector_count * fs->volume->sector_size);
+    root_entry = fake_entry_create(fs->info.root_cluster, "/", fs->volume->sector_count * fs->volume->sector_size);
+    if (root_entry != NULL) {
+        fs->root_dir = dir_init(fs, root_entry);
+    }
 
     return fs;
 }
 
 void fat_fs_fini(fat_fs_t *fs)
 {
-    free(fs->root_entry);
+    if (fs->root_dir != NULL)
+        dir_close(fs, fs->root_dir);
+    
     if (fs->info.buffer != NULL) {
         fat_fsinfo_flush(fs);
         free(fs->info.buffer);
     }
+    
     fat_table_fini(fs->table, fs);
     fat_volume_fini(fs->volume);
     free(fs);

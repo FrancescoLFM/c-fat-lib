@@ -38,7 +38,8 @@ int main()
     puts("Filesystem initiated.");
     fat_fs_printinfo(fs);
 
-    file_create(fs, "/sdrogo", "provadir");
+    file_create(fs, "/sdrogo", "PROVADIR");
+    file_delete(fs, "/sdrogo/provadir");
     test_file = file_open_path(fs, "/sdrogo/provadir");
 
     if (test_file)

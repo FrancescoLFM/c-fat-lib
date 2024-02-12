@@ -41,7 +41,7 @@ uint8_t *file_read(file_t *file, fat_fs_t *fs, uint32_t offset, size_t size)
 {
     uint8_t *buffer;
 
-    buffer = malloc(size * sizeof(uint8_t));
+    buffer = malloc(size * sizeof(*buffer));
     if (buffer == NULL) {
         puts("Memory error: not enough space to save file buffer");
         return NULL;
@@ -79,7 +79,7 @@ file_t *file_open_path(fat_fs_t *fs, char *path)
 
     /* root check */
     if (*path == '/') {
-        starting_dir = dir_init(fs, fs->root_entry);
+        starting_dir = fs->root_dir;
         ++path;
     }
     else
@@ -87,14 +87,18 @@ file_t *file_open_path(fat_fs_t *fs, char *path)
 
     dir_scan(fs, starting_dir);
     entry = dir_search_path(fs, starting_dir, path);
-    dir_close(fs, starting_dir);
-
-    if (entry == NULL || entry->attr != FILE_ATTR)
+    if (entry == NULL)
         return NULL;
+    if (entry->attr != FILE_ATTR) {
+        free(entry);
+        return NULL;
+    }
 
     ret = file_open(fs, entry);
     ret->path = strdup(save_path);
-    free(entry);
+    if (ret->path != NULL)
+        rstrip_path(ret->path);
+
     return ret;
 }
 
@@ -132,56 +136,85 @@ entry_t *file_entry_create(char *filename, uint32_t cluster)
     return entry;
 }
 
+void rstrip_path(char *path)
+{
+    size_t len;
+    size_t i;
+    len = strlen(path);
+
+    for (i=len; i; i--)
+        if (path[i] == '/') {
+            path[i] = '\0';
+            return;
+        }
+
+    return;
+}
+
 void file_create(fat_fs_t *fs, char *path, char *filename)
 {
     uint32_t cluster;
-    entry_t *dir_entry;
-    dir_t *starting_dir;
     dir_t *dir;
     entry_t *file_entry;
 
     cluster = first_free_cluster_read(fs);
     
-    /* root check */
-    if (*path == '/') {
-        starting_dir = dir_init(fs, fs->root_entry);
-        ++path;
-    }
-    else
+    dir = dir_open_path(fs, path);
+    if (dir == NULL)
         return;
-
-    dir_scan(fs, starting_dir);
-    dir_entry = dir_search_path(fs, starting_dir, path);
-    if (dir_entry == NULL)
-        goto exit;
-
-    dir = dir_init(fs, dir_entry);
-    if (dir == NULL) {
-        free(dir_entry);
-        goto exit;
-    }
     dir_scan(fs, dir);
     if ((file_entry = dir_search(dir, filename)) != NULL) {
         free(file_entry);
-        free(dir_entry);
         dir_close(fs, dir);
-        goto exit;
+        return;
     }
     file_entry = file_entry_create(filename, cluster);
     if (file_entry == NULL) {
-        free(dir_entry);
         dir_close(fs, dir);
-        goto exit;
+        return;
     }
     
     fat_table_alloc_cluster(fs, EOC1);
     dir_entry_create(fs, dir, file_entry);
 
     dir_close(fs, dir);
-    free(dir_entry);
     free(file_entry);
-exit:
-    dir_close(fs, starting_dir);
+
+    return;
+}
+
+void file_delete(fat_fs_t *fs, char *path)
+{
+    dir_t *dir;
+    file_t *file;
+    entry_t *dummy_entry;
+
+    file = file_open_path(fs, path);
+    if (file == NULL)
+        return;
+    if (file->path == NULL) {
+        file_close(fs, file);
+        return;
+    }
+    dir = dir_open_path(fs, file->path);
+    if (dir == NULL) {
+        file_close(fs, file);
+        return;
+    }
+    dummy_entry = calloc(1, sizeof(*dummy_entry));
+    if (dummy_entry == NULL) {
+        dir_close(fs, dir);
+        file_close(fs, file);
+        return;
+    }
+    dir_scan(fs, dir);
+    dir_entry_override(fs, dir, file->entry->short_name, dummy_entry);
+    fat_table_write(fs, file->cluster, 0);
+
+    file_close(fs, file);
+    dir_close(fs, dir);
+    free(dummy_entry);
+    
     return;
 }
 
@@ -191,5 +224,6 @@ void file_close(fat_fs_t *fs, file_t *file)
         free(file->path);
     cache_flush(file->cache, fs);
     cache_fini(file->cache);
+    free(file->entry);
     free(file);
 }

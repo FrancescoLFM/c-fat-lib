@@ -9,8 +9,10 @@ fat_table_t *fat_table_init(fat_volume_t *volume)
     fat_table_t *table;
 
     table = malloc(sizeof(*table));
-    if (table == NULL)
+    if (table == NULL) {
         puts("Malloc error: not enough space to allocate fat table");
+        return NULL;
+    }
 
     table->cache = cache_init(FAT_CACHE_SIZE, volume->sector_size, read_sector, write_sector);
     if (table->cache == NULL) {
