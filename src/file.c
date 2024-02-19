@@ -102,6 +102,14 @@ file_t *file_open_path(fat_fs_t *fs, char *path)
     return ret;
 }
 
+int ctoupper(char c)
+{
+    if (c >= 'a' && c <= 'z')
+        return c - ('a' - 'A');
+    else
+        return c;
+}
+
 void entry_name_copy(entry_t *entry, char *filename)
 {
     int j;
@@ -110,10 +118,10 @@ void entry_name_copy(entry_t *entry, char *filename)
         entry->short_name[i] = ' ';
 
     for (j = 0; j < FILENAME_LEN && filename[j] && filename[j] != '.'; j++)
-        entry->short_name[j] = filename[j];
+        entry->short_name[j] = ctoupper(filename[j]);
 
     for (int k = 0; k < FILE_EXT_LEN && filename[j]; k++, j++)
-        entry->short_name[SHORT_NAME_LEN + k] = filename[j];
+        entry->short_name[SHORT_NAME_LEN + k] = ctoupper(filename[j]);
 
     return;
 }
